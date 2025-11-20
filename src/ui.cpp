@@ -32,24 +32,25 @@ void initDisplay() {
   tft.setRotation(0);  // Rotate display 90 degrees relative to previous orientation - use 0 or 2 for portrait
 
   drawSplashBase();
-  renderStatus(getState(), false, false);
+  renderStatus(getState(), false, false, "");
 }
 
-void renderStatus(FlameState state, bool wifiConnected, bool wifiError) {
+void renderStatus(FlameState state, bool wifiConnected, bool wifiError, const String &wifiIp) {
   static bool hasRendered = false;
   static FlameState lastRenderedState = ON;
   static bool lastWifiConnected = false;
   static bool lastWifiError = false;
+  static String lastIp = "";
 
   if (hasRendered && state == lastRenderedState && wifiConnected == lastWifiConnected &&
-      wifiError == lastWifiError) {
+      wifiError == lastWifiError && wifiIp == lastIp) {
     // Avoid unnecessary redraws that can cause visible flicker when nothing changed.
     return;
   }
 
   // Small status area to show current state without redrawing the whole screen.
   constexpr int16_t statusY = 80;
-  constexpr int16_t statusHeight = 60;
+  constexpr int16_t statusHeight = 90;
   tft.fillRect(0, statusY, tft.width(), statusHeight, BACKGROUND_COLOR);
   tft.setTextColor(TEXT_COLOR, BACKGROUND_COLOR);
   tft.setTextSize(2);
@@ -69,6 +70,14 @@ void renderStatus(FlameState state, bool wifiConnected, bool wifiError) {
   }
   tft.drawString(wifiText, 10, statusY + 30);
 
+  if (wifiConnected) {
+    String ipText = "IP: ";
+    ipText += wifiIp;
+    tft.setTextSize(1);
+    tft.drawString(ipText, 10, statusY + 55);
+    tft.setTextSize(2);
+  }
+
   // Show clear recovery instructions when WiFi failures push us into ERROR_STATE.
   if (wifiError) {
     tft.setTextSize(1);
@@ -79,6 +88,7 @@ void renderStatus(FlameState state, bool wifiConnected, bool wifiError) {
   lastRenderedState = state;
   lastWifiConnected = wifiConnected;
   lastWifiError = wifiError;
+  lastIp = wifiIp;
 }
 
 void initUI() {

@@ -23,7 +23,8 @@ void setup() {
   setState(ON);
 
   ui::initDisplay();
-  ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently());
+  ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently(),
+                   network::getWifiIpString());
 
   effects::initEffects();
   effects::startStartupTest();
@@ -51,10 +52,12 @@ void loop() {
   if (getState() == ON) {
     if (network::isWifiConnected()) {
       setState(READY);
-      ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently());
+      ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently(),
+                       network::getWifiIpString());
     } else if (network::hasWifiFailedPermanently()) {
       setState(ERROR_STATE);
-      ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently());
+      ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently(),
+                       network::getWifiIpString());
     }
   }
 
@@ -63,6 +66,7 @@ void loop() {
   if (now - lastStateUpdateMs >= 10) {
     lastStateUpdateMs = now;
     updateState();
-    ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently());
+    ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently(),
+                     network::getWifiIpString());
   }
 }

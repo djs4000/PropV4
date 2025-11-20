@@ -76,6 +76,13 @@ bool isWifiConnected() { return WiFi.status() == WL_CONNECTED; }
 
 bool hasWifiFailedPermanently() { return wifiFailedPermanently; }
 
+String getWifiIpString() {
+  if (!isWifiConnected()) {
+    return String("");
+  }
+  return WiFi.localIP().toString();
+}
+
 uint64_t getLastSuccessfulApiMs() { return lastSuccessfulApiMs; }
 
 MatchStatus getRemoteMatchStatus() { return remoteStatus; }

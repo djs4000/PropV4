@@ -15,6 +15,7 @@ void updateWifi();
 
 bool isWifiConnected();
 bool hasWifiFailedPermanently();
+String getWifiIpString();
 uint64_t getLastSuccessfulApiMs();
 MatchStatus getRemoteMatchStatus();
 
