@@ -140,6 +140,7 @@ Buttons behave as:
 }
 ```
 
+
 Allowed `state` values in JSON:
 
 - `"On"`, `"Ready"`, `"Active"`, `"Arming"`, `"Armed"`, `"Defused"`, `"Detonated"`, `"Error"`.
