@@ -19,21 +19,30 @@ void setup() {
   }
 #endif
 
-  initEffects();
-  initInputs();
-  initUI();
-  network::initNetwork();
-
   // Initial state on boot
   setState(ON);
+
+  ui::initDisplay();
+  ui::renderStatus(getState());
+
+  effects::initEffects();
+  effects::startStartupTest();
+  effects::startStartupBeep();
+
+  initInputs();
+  ui::initUI();
+  network::initNetwork();
 }
 
 void loop() {
   const unsigned long now = millis();
 
   updateInputs();
-  updateEffects();
-  updateUI();
+
+  // Startup hardware self-checks (LEDs + audio) remain non-blocking via effects::updateEffects().
+  effects::updateEffects();
+
+  ui::updateUI();
 
   // Networking cadence is controlled internally based on API_POST_INTERVAL_MS.
   network::updateNetwork();
@@ -43,5 +52,6 @@ void loop() {
   if (now - lastStateUpdateMs >= 10) {
     lastStateUpdateMs = now;
     updateState();
+    ui::renderStatus(getState());
   }
 }
