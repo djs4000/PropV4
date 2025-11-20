@@ -56,10 +56,6 @@ void updateState() {
 
   switch (currentState) {
     case ON:
-      // Transition to READY when WiFi is connected; otherwise remain ON.
-      if (network::isWifiConnected()) {
-        setState(READY);
-      }
       break;
 
     case READY:
