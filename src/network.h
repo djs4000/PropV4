@@ -22,4 +22,7 @@ MatchStatus getRemoteMatchStatus();
 // Allow state/timer injection for payload construction (set by state machine).
 void setOutboundStatus(FlameState state, uint32_t timerMs);
 
+// Periodic API POST handler; must be called from loop() once WiFi is connected.
+void updateApi();
+
 }  // namespace network

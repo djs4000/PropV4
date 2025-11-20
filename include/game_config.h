@@ -17,3 +17,13 @@ static constexpr const char *DEFAULT_DEFUSE_CODE = "1234";
 
 // Optional default API endpoint. Replace with the real backend URL when known.
 static constexpr const char *DEFAULT_API_ENDPOINT = "https://n8n.santiso.xyz/webhook-test/ac64f84c-08b9-47e4-b252-a77f3411f0a9";
+
+// Controls how the device interacts with the backend API. Additional configurability
+// will be added later; for now the mode is fixed to TestSendOnly.
+enum class ApiMode {
+  Disabled,      // no HTTP calls, maybe just log JSON
+  TestSendOnly,  // send POST, ignore response and never trigger errors
+  FullOnline     // send POST, parse response, enforce timeout rules
+};
+
+inline ApiMode getApiMode() { return ApiMode::TestSendOnly; }
