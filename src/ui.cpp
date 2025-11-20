@@ -29,7 +29,7 @@ void initDisplay() {
   digitalWrite(BACKLIGHT_PIN, HIGH);
 
   tft.init();
-  tft.setRotation(2);  // Rotate display 90 degrees relative to previous orientation
+  tft.setRotation(0);  // Rotate display 90 degrees relative to previous orientation - use 0 or 2 for portrait
 
   drawSplashBase();
   renderStatus(getState());
