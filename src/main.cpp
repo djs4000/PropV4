@@ -22,7 +22,7 @@ void setup() {
   initEffects();
   initInputs();
   initUI();
-  initNetwork();
+  network::initNetwork();
 
   // Initial state on boot
   setState(ON);
@@ -36,7 +36,7 @@ void loop() {
   updateUI();
 
   // Networking cadence is controlled internally based on API_POST_INTERVAL_MS.
-  updateNetwork();
+  network::updateNetwork();
 
   // State machine should run frequently but cheaply; simple guard in case
   // future logic needs throttling.
