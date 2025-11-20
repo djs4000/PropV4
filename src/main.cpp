@@ -1,18 +1,47 @@
 #include <Arduino.h>
 
-// put function declarations here:
-int myFunction(int, int);
+#include "effects.h"
+#include "inputs.h"
+#include "network.h"
+#include "state_machine.h"
+#include "ui.h"
+#include "util.h"
+
+// Cooperative scheduler timestamps
+static unsigned long lastStateUpdateMs = 0;
 
 void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+#ifdef DEBUG
+  Serial.begin(115200);
+  while (!Serial) {
+    // Wait for serial to be ready (non-blocking for ESP32, loop exits immediately).
+    break;
+  }
+#endif
+
+  initEffects();
+  initInputs();
+  initUI();
+  network::initNetwork();
+
+  // Initial state on boot
+  setState(ON);
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-}
+  const unsigned long now = millis();
 
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
+  updateInputs();
+  updateEffects();
+  updateUI();
+
+  // Networking cadence is controlled internally based on API_POST_INTERVAL_MS.
+  network::updateNetwork();
+
+  // State machine should run frequently but cheaply; simple guard in case
+  // future logic needs throttling.
+  if (now - lastStateUpdateMs >= 10) {
+    lastStateUpdateMs = now;
+    updateState();
+  }
 }
