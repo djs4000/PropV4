@@ -16,4 +16,4 @@ constexpr uint32_t DEFAULT_BOMB_DURATION_MS = 40000; // example: 40s
 static constexpr const char *DEFAULT_DEFUSE_CODE = "1234";
 
 // Optional default API endpoint. Replace with the real backend URL when known.
-static constexpr const char *DEFAULT_API_ENDPOINT = "http://example.com/api/flame";
+static constexpr const char *DEFAULT_API_ENDPOINT = "https://n8n.santiso.xyz/webhook-test/ac64f84c-08b9-47e4-b252-a77f3411f0a9";
