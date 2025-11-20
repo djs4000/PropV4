@@ -36,6 +36,14 @@ void initDisplay() {
 }
 
 void renderStatus(FlameState state) {
+  static bool hasRendered = false;
+  static FlameState lastRenderedState = ON;
+
+  if (hasRendered && state == lastRenderedState) {
+    // Avoid unnecessary redraws that can cause visible flicker when the state has not changed.
+    return;
+  }
+
   // Small status area to show current state without redrawing the whole screen.
   constexpr int16_t statusY = 80;
   constexpr int16_t statusHeight = 30;
@@ -47,6 +55,9 @@ void renderStatus(FlameState state) {
   String statusText = "State: ";
   statusText += flameStateToString(state);
   tft.drawString(statusText, 10, statusY + 5);
+
+  hasRendered = true;
+  lastRenderedState = state;
 }
 
 void initUI() {
