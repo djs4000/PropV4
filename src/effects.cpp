@@ -4,7 +4,7 @@
 
 namespace {
 constexpr uint8_t LED_PIN = 19;
-constexpr uint16_t LED_COUNT = 30;
+constexpr uint16_t LED_COUNT = 128;
 constexpr uint8_t LED_BRIGHTNESS = 64;
 constexpr uint32_t STARTUP_TEST_DURATION_MS = 1000;
 constexpr uint8_t AMP_ENABLE_PIN = 4;     // LOW = enable
