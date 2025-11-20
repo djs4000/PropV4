@@ -5,6 +5,7 @@
 #include "util.h"
 #include "wifi_config.h"
 
+#include <esp_heap_caps.h>
 #include <esp_timer.h>
 
 namespace network {
@@ -19,6 +20,19 @@ static uint32_t outboundTimerMs = DEFAULT_BOMB_DURATION_MS;
 static unsigned long lastPostAttemptMs = 0;
 static WiFiClient wifiClient;
 static HTTPClient httpClient;
+
+// Custom allocator that leverages ESP32 SPI RAM for ArduinoJson documents.
+struct SpiRamAllocator : ArduinoJson::Allocator {
+  void *allocate(size_t size) override { return heap_caps_malloc(size, MALLOC_CAP_SPIRAM); }
+
+  void deallocate(void *pointer) override { heap_caps_free(pointer); }
+
+  void *reallocate(void *ptr, size_t new_size) override {
+    return heap_caps_realloc(ptr, new_size, MALLOC_CAP_SPIRAM);
+  }
+};
+
+static SpiRamAllocator jsonAllocator;
 
 // Placeholder API endpoint; will be replaced by Preferences/web UI later.
 static String apiEndpoint = DEFAULT_API_ENDPOINT;
@@ -41,10 +55,9 @@ static void sendStatusUpdate() {
     return;
   }
 
-  // Use JsonDocument with reserved capacity to align with ArduinoJson v7 API
-  // guidance while avoiding deprecated Dynamic/StaticJsonDocument helpers.
-  JsonDocument doc;
-  doc.reserve(256);
+  // Use JsonDocument with a custom allocator to align with ArduinoJson v7 API
+  // guidance while keeping heap usage flexible on ESP32.
+  JsonDocument doc(&jsonAllocator);
   doc["state"] = flameStateToString(outboundState);
   doc["timer"] = outboundTimerMs;
   doc["timestamp"] = static_cast<uint64_t>(esp_timer_get_time());
@@ -64,8 +77,7 @@ static void sendStatusUpdate() {
 
   const int httpCode = httpClient.POST(payload);
   if (httpCode == HTTP_CODE_OK) {
-    JsonDocument response;
-    response.reserve(256);
+    JsonDocument response(&jsonAllocator);
     DeserializationError err = deserializeJson(response, httpClient.getString());
     if (!err) {
       lastSuccessfulApiMs = millis();
