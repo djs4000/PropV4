@@ -32,32 +32,53 @@ void initDisplay() {
   tft.setRotation(0);  // Rotate display 90 degrees relative to previous orientation - use 0 or 2 for portrait
 
   drawSplashBase();
-  renderStatus(getState());
+  renderStatus(getState(), false, false);
 }
 
-void renderStatus(FlameState state) {
+void renderStatus(FlameState state, bool wifiConnected, bool wifiError) {
   static bool hasRendered = false;
   static FlameState lastRenderedState = ON;
+  static bool lastWifiConnected = false;
+  static bool lastWifiError = false;
 
-  if (hasRendered && state == lastRenderedState) {
-    // Avoid unnecessary redraws that can cause visible flicker when the state has not changed.
+  if (hasRendered && state == lastRenderedState && wifiConnected == lastWifiConnected &&
+      wifiError == lastWifiError) {
+    // Avoid unnecessary redraws that can cause visible flicker when nothing changed.
     return;
   }
 
   // Small status area to show current state without redrawing the whole screen.
   constexpr int16_t statusY = 80;
-  constexpr int16_t statusHeight = 30;
+  constexpr int16_t statusHeight = 60;
   tft.fillRect(0, statusY, tft.width(), statusHeight, BACKGROUND_COLOR);
   tft.setTextColor(TEXT_COLOR, BACKGROUND_COLOR);
   tft.setTextSize(2);
   tft.setTextDatum(TL_DATUM);
 
-  String statusText = "State: ";
-  statusText += flameStateToString(state);
-  tft.drawString(statusText, 10, statusY + 5);
+  String stateText = "State: ";
+  stateText += flameStateToString(state);
+  tft.drawString(stateText, 10, statusY + 5);
+
+  String wifiText = "WiFi: ";
+  if (wifiConnected) {
+    wifiText += "Connected";
+  } else if (wifiError) {
+    wifiText += "Error";
+  } else {
+    wifiText += "Connecting...";
+  }
+  tft.drawString(wifiText, 10, statusY + 30);
+
+  // Show clear recovery instructions when WiFi failures push us into ERROR_STATE.
+  if (wifiError) {
+    tft.setTextSize(1);
+    tft.drawString("WiFi Error - Hold both buttons to reset", 10, statusY + 50);
+  }
 
   hasRendered = true;
   lastRenderedState = state;
+  lastWifiConnected = wifiConnected;
+  lastWifiError = wifiError;
 }
 
 void initUI() {

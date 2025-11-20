@@ -23,7 +23,7 @@ void setup() {
   setState(ON);
 
   ui::initDisplay();
-  ui::renderStatus(getState());
+  ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently());
 
   effects::initEffects();
   effects::startStartupTest();
@@ -31,7 +31,7 @@ void setup() {
 
   initInputs();
   ui::initUI();
-  network::initNetwork();
+  network::beginWifi();
 }
 
 void loop() {
@@ -45,13 +45,24 @@ void loop() {
   ui::updateUI();
 
   // Networking cadence is controlled internally based on API_POST_INTERVAL_MS.
-  network::updateNetwork();
+  network::updateWifi();
+
+  // Drive WiFi-dependent state changes without blocking the loop.
+  if (getState() == ON) {
+    if (network::isWifiConnected()) {
+      setState(READY);
+      ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently());
+    } else if (network::hasWifiFailedPermanently()) {
+      setState(ERROR_STATE);
+      ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently());
+    }
+  }
 
   // State machine should run frequently but cheaply; simple guard in case
   // future logic needs throttling.
   if (now - lastStateUpdateMs >= 10) {
     lastStateUpdateMs = now;
     updateState();
-    ui::renderStatus(getState());
+    ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently());
   }
 }
