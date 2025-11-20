@@ -55,7 +55,7 @@ static void handleDebugSerialStateChange() {
   if (shouldUpdate) {
     setState(requestedState);
     ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently(),
-                     network::getWifiIpString());
+                     network::getWifiIpString(), getMatchStatus(), network::getRemoteRemainingTimeMs());
   }
 }
 #endif
@@ -74,7 +74,7 @@ void setup() {
 
   ui::initDisplay();
   ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently(),
-                   network::getWifiIpString());
+                   network::getWifiIpString(), getMatchStatus(), network::getRemoteRemainingTimeMs());
 
   effects::initEffects();
   effects::startStartupTest();
@@ -108,14 +108,14 @@ void loop() {
 
   // Drive WiFi-dependent state changes without blocking the loop.
   if (getState() == ON) {
-    if (network::isWifiConnected()) {
+    if (network::hasReceivedApiResponse()) {
       setState(READY);
       ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently(),
-                       network::getWifiIpString());
+                       network::getWifiIpString(), getMatchStatus(), network::getRemoteRemainingTimeMs());
     } else if (network::hasWifiFailedPermanently()) {
       setState(ERROR_STATE);
       ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently(),
-                       network::getWifiIpString());
+                       network::getWifiIpString(), getMatchStatus(), network::getRemoteRemainingTimeMs());
     }
   }
 
@@ -125,6 +125,6 @@ void loop() {
     lastStateUpdateMs = now;
     updateState();
     ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently(),
-                     network::getWifiIpString());
+                     network::getWifiIpString(), getMatchStatus(), network::getRemoteRemainingTimeMs());
   }
 }

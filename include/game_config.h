@@ -26,4 +26,4 @@ enum class ApiMode {
   FullOnline     // send POST, parse response, enforce timeout rules
 };
 
-inline ApiMode getApiMode() { return ApiMode::TestSendOnly; }
+inline ApiMode getApiMode() { return ApiMode::FullOnline; }

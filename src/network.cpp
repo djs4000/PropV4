@@ -16,6 +16,10 @@ static uint64_t lastSuccessfulApiMs = 0;
 static MatchStatus remoteStatus = WaitingOnStart;
 static FlameState outboundState = ON;
 static uint32_t outboundTimerMs = DEFAULT_BOMB_DURATION_MS;
+static uint32_t baseRemainingTimeMs = 0;
+static uint64_t baseRemainingTimestampMs = 0;
+static uint64_t lastApiResponseMs = 0;
+static bool apiResponseReceived = false;
 
 // Tracks the last POST attempt to maintain the configured cadence.
 static uint32_t lastApiPostMs = 0;
@@ -94,6 +98,22 @@ uint64_t getLastSuccessfulApiMs() { return lastSuccessfulApiMs; }
 
 MatchStatus getRemoteMatchStatus() { return remoteStatus; }
 
+uint32_t getRemoteRemainingTimeMs() {
+  if (!apiResponseReceived) {
+    return 0;
+  }
+
+  const uint64_t now = millis();
+  const uint64_t elapsed = now - baseRemainingTimestampMs;
+  if (elapsed >= baseRemainingTimeMs) {
+    return 0;
+  }
+
+  return static_cast<uint32_t>(baseRemainingTimeMs - elapsed);
+}
+
+bool hasReceivedApiResponse() { return apiResponseReceived; }
+
 void setOutboundStatus(FlameState state, uint32_t timerMs) {
   outboundState = state;
   outboundTimerMs = timerMs;
@@ -166,13 +186,29 @@ void updateApi() {
     DynamicJsonDocument respDoc(256);
     const DeserializationError err = deserializeJson(respDoc, response);
     if (!err) {
-      lastSuccessfulApiMs = now;
       const char *statusStr = respDoc["status"];
       MatchStatus parsedStatus;
-      if (util::parseMatchStatus(statusStr, parsedStatus)) {
+      const bool statusParsed = util::parseMatchStatus(statusStr, parsedStatus);
+
+      const uint32_t remainingMs = respDoc["remaining_time_ms"] | 0;
+      baseRemainingTimeMs = remainingMs;
+      baseRemainingTimestampMs = now;
+      lastApiResponseMs = now;
+      apiResponseReceived = true;
+
+      if (statusParsed) {
         remoteStatus = parsedStatus;
       }
-      // remaining_time_ms and timestamp can be integrated into timers later.
+
+      // Treat a well-formed JSON body as a successful API interaction for timeout tracking.
+      lastSuccessfulApiMs = now;
+
+#ifdef DEBUG
+      Serial.print("API status: ");
+      Serial.print(statusStr ? statusStr : "<null>");
+      Serial.print(" remaining_ms=");
+      Serial.println(remainingMs);
+#endif
     } else {
 #ifdef DEBUG
       Serial.print("API JSON parse error: ");

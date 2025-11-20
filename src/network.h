@@ -18,6 +18,8 @@ bool hasWifiFailedPermanently();
 String getWifiIpString();
 uint64_t getLastSuccessfulApiMs();
 MatchStatus getRemoteMatchStatus();
+uint32_t getRemoteRemainingTimeMs();
+bool hasReceivedApiResponse();
 
 // Allow state/timer injection for payload construction (set by state machine).
 void setOutboundStatus(FlameState state, uint32_t timerMs);
