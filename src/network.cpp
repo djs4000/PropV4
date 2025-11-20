@@ -41,10 +41,9 @@ static void sendStatusUpdate() {
     return;
   }
 
-  // JsonDocument is the ArduinoJson 7+ recommended type. Reserve a small
-  // capacity since the payload is minimal.
-  JsonDocument doc;
-  doc.reserve(256);
+  // Use DynamicJsonDocument with explicit capacity to satisfy ArduinoJson 7
+  // allocations without deprecated constructors.
+  DynamicJsonDocument doc(256);
   doc["state"] = flameStateToString(outboundState);
   doc["timer"] = outboundTimerMs;
   doc["timestamp"] = static_cast<uint64_t>(esp_timer_get_time());
@@ -64,8 +63,7 @@ static void sendStatusUpdate() {
 
   const int httpCode = httpClient.POST(payload);
   if (httpCode == HTTP_CODE_OK) {
-    JsonDocument response;
-    response.reserve(256);
+    DynamicJsonDocument response(256);
     DeserializationError err = deserializeJson(response, httpClient.getString());
     if (!err) {
       lastSuccessfulApiMs = millis();
