@@ -8,20 +8,22 @@
 #include <esp_timer.h>
 
 namespace network {
-namespace {
-uint64_t lastSuccessfulApiMs = 0;
-MatchStatus remoteStatus = WaitingOnStart;
-FlameState outboundState = ON;
-uint32_t outboundTimerMs = DEFAULT_BOMB_DURATION_MS;
 
-unsigned long lastPostAttemptMs = 0;
-WiFiClient wifiClient;
-HTTPClient httpClient;
+// Internal state cached for network interactions. Variables are file-local via
+// `static` to avoid exposing them outside this translation unit.
+static uint64_t lastSuccessfulApiMs = 0;
+static MatchStatus remoteStatus = WaitingOnStart;
+static FlameState outboundState = ON;
+static uint32_t outboundTimerMs = DEFAULT_BOMB_DURATION_MS;
+
+static unsigned long lastPostAttemptMs = 0;
+static WiFiClient wifiClient;
+static HTTPClient httpClient;
 
 // Placeholder API endpoint; will be replaced by Preferences/web UI later.
-String apiEndpoint = DEFAULT_API_ENDPOINT;
+static String apiEndpoint = DEFAULT_API_ENDPOINT;
 
-void connectWifiIfNeeded() {
+static void connectWifiIfNeeded() {
   if (WiFi.isConnected()) {
     return;
   }
@@ -34,7 +36,7 @@ void connectWifiIfNeeded() {
 #endif
 }
 
-void sendStatusUpdate() {
+static void sendStatusUpdate() {
   if (!WiFi.isConnected()) {
     return;
   }
@@ -70,8 +72,6 @@ void sendStatusUpdate() {
 
   httpClient.end();
 }
-}  // namespace
-
 void initNetwork() {
   lastSuccessfulApiMs = millis();
   connectWifiIfNeeded();
