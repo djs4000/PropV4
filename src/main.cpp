@@ -1,6 +1,7 @@
 #include <Arduino.h>
 
 #include "effects.h"
+#include "game_config.h"
 #include "inputs.h"
 #include "network.h"
 #include "state_machine.h"
@@ -9,6 +10,41 @@
 
 // Cooperative scheduler timestamps
 static unsigned long lastStateUpdateMs = 0;
+static uint32_t configuredBombDurationMs = DEFAULT_BOMB_DURATION_MS;  // TODO: load from NVS
+static bool mainScreenInitialized = false;
+static FlameState lastRenderedState = ON;
+static uint32_t lastRenderedRemainingMs = 0;
+static float lastRenderedArmingProgress = -1.0f;
+
+static void renderMainUiIfNeeded(FlameState state) {
+  // Placeholder progress wiring; will be replaced with real ARMING hold tracking.
+  const float armingProgress = (state == ARMING) ? 0.0f : 0.0f;
+  const uint32_t remainingMs = configuredBombDurationMs;  // Countdown hook will update this later.
+
+  bool shouldRender = false;
+
+  if (state == READY && !mainScreenInitialized) {
+    ui::initMainScreen();
+    mainScreenInitialized = true;
+    shouldRender = true;
+  }
+
+  if (!mainScreenInitialized) {
+    return;
+  }
+
+  if (state != lastRenderedState || remainingMs != lastRenderedRemainingMs ||
+      armingProgress != lastRenderedArmingProgress) {
+    shouldRender = true;
+  }
+
+  if (shouldRender) {
+    ui::renderState(state, configuredBombDurationMs, remainingMs, armingProgress, DEFUSE_CODE_LENGTH, 0);
+    lastRenderedState = state;
+    lastRenderedRemainingMs = remainingMs;
+    lastRenderedArmingProgress = armingProgress;
+  }
+}
 
 #ifdef DEBUG
 // Allows manual state overrides for testing API POST behavior without waiting on
@@ -54,8 +90,7 @@ static void handleDebugSerialStateChange() {
 
   if (shouldUpdate) {
     setState(requestedState);
-    ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently(),
-                     network::getWifiIpString(), getMatchStatus(), network::getRemoteRemainingTimeMs());
+    renderMainUiIfNeeded(getState());
   }
 }
 #endif
@@ -71,10 +106,6 @@ void setup() {
 
   // Initial state on boot
   setState(ON);
-
-  ui::initDisplay();
-  ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently(),
-                   network::getWifiIpString(), getMatchStatus(), network::getRemoteRemainingTimeMs());
 
   effects::initEffects();
   effects::startStartupTest();
@@ -110,12 +141,10 @@ void loop() {
   if (getState() == ON) {
     if (network::hasReceivedApiResponse()) {
       setState(READY);
-      ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently(),
-                       network::getWifiIpString(), getMatchStatus(), network::getRemoteRemainingTimeMs());
+      renderMainUiIfNeeded(getState());
     } else if (network::hasWifiFailedPermanently()) {
       setState(ERROR_STATE);
-      ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently(),
-                       network::getWifiIpString(), getMatchStatus(), network::getRemoteRemainingTimeMs());
+      renderMainUiIfNeeded(getState());
     }
   }
 
@@ -124,7 +153,6 @@ void loop() {
   if (now - lastStateUpdateMs >= 10) {
     lastStateUpdateMs = now;
     updateState();
-    ui::renderStatus(getState(), network::isWifiConnected(), network::hasWifiFailedPermanently(),
-                     network::getWifiIpString(), getMatchStatus(), network::getRemoteRemainingTimeMs());
+    renderMainUiIfNeeded(getState());
   }
 }
