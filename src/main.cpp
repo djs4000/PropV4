@@ -7,6 +7,7 @@
 #include "state_machine.h"
 #include "ui.h"
 #include "util.h"
+#include "wifi_config.h"
 
 // Cooperative scheduler timestamps
 static unsigned long lastStateUpdateMs = 0;
@@ -112,7 +113,11 @@ void setup() {
   effects::startStartupBeep();
 
   initInputs();
+  // TODO: Validate that no buttons are held at boot to detect potential hardware faults.
   ui::initUI();
+  ui::showBootScreen(DEFAULT_WIFI_SSID);
+  ui::updateBootStatus(false, String(""), configuredApiEndpoint, false);
+  bootScreenShown = true;
   network::beginWifi();
 }
 
@@ -128,6 +133,14 @@ void loop() {
 
   // Networking cadence is controlled internally based on API_POST_INTERVAL_MS.
   network::updateWifi();
+
+  if (getState() == ON) {
+    const bool wifiConnected = network::isWifiConnected();
+    if (bootScreenShown) {
+      ui::updateBootStatus(wifiConnected, wifiConnected ? network::getWifiIpString() : String(""),
+                          configuredApiEndpoint, network::hasReceivedApiResponse());
+    }
+  }
 
 #ifdef DEBUG
   handleDebugSerialStateChange();
