@@ -2,6 +2,7 @@
 
 #include <TFT_eSPI.h>
 
+#include "network.h"
 #include "state_machine.h"
 
 namespace {
@@ -28,6 +29,11 @@ constexpr int16_t CODE_Y = 260;
 TFT_eSPI tft = TFT_eSPI();
 bool screenInitialized = false;
 bool layoutDrawn = false;
+bool bootLayoutDrawn = false;
+
+String lastBootWifiLine;
+String lastBootStatusLine;
+String lastBootEndpointLine;
 
 int16_t barX() { return (tft.width() - BAR_WIDTH) / 2; }
 
@@ -44,6 +50,35 @@ void ensureDisplayReady() {
   tft.fillScreen(BACKGROUND_COLOR);
   tft.setTextColor(FOREGROUND_COLOR, BACKGROUND_COLOR);
   screenInitialized = true;
+}
+
+void drawBootLayout() {
+  if (bootLayoutDrawn) {
+    return;
+  }
+
+  tft.fillScreen(BACKGROUND_COLOR);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextSize(TITLE_TEXT_SIZE);
+  tft.drawString("Digital Flame", 10, 10);
+
+  bootLayoutDrawn = true;
+  lastBootWifiLine = "";
+  lastBootStatusLine = "";
+  lastBootEndpointLine = "";
+}
+
+void drawBootLine(const String &text, int16_t y, uint8_t textSize, String &cache) {
+  if (text == cache) {
+    return;
+  }
+
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextSize(textSize);
+  const int16_t clearHeight = textSize * 8 + 2;
+  tft.fillRect(0, y, tft.width(), clearHeight, BACKGROUND_COLOR);
+  tft.drawString(text, 10, y + clearHeight / 2);
+  cache = text;
 }
 
 void drawStaticLayout() {
@@ -88,8 +123,25 @@ void formatTimeMMSS(uint32_t ms, char *buffer, size_t len) {
   snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(minutes), static_cast<unsigned>(seconds));
 }
 
+void renderBootScreen(const String &wifiSsid, bool wifiConnected, const String &ipAddress,
+                      const String &apiEndpoint, bool hasApiResponse) {
+  ensureDisplayReady();
+  drawBootLayout();
+
+  const String wifiLine =
+      wifiConnected ? String("WiFi: connected (") + (ipAddress.isEmpty() ? "IP pending" : ipAddress) + ")"
+                    : String("WiFi: connecting to ") + wifiSsid;
+  const String apiStatusLine = hasApiResponse ? "Status: API response received" : "Status: waiting for API response";
+  const String endpointLine = String("Endpoint: ") + apiEndpoint;
+
+  drawBootLine(wifiLine, 70, STATUS_TEXT_SIZE, lastBootWifiLine);
+  drawBootLine(apiStatusLine, 110, STATUS_TEXT_SIZE, lastBootStatusLine);
+  drawBootLine(endpointLine, 150, STATUS_TEXT_SIZE, lastBootEndpointLine);
+}
+
 void initMainScreen() {
   ensureDisplayReady();
+  bootLayoutDrawn = false;  // Force boot overlay to redraw if revisited later.
   layoutDrawn = false;  // Force redraw of static layout if called again.
   drawStaticLayout();
 
@@ -170,6 +222,17 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     tft.fillRect(0, CODE_Y - 16, tft.width(), 32, BACKGROUND_COLOR);
     lastCodeLength = 0;
   }
+
+#ifdef DEBUG
+  // Tiny IP overlay for debugging along the bottom of the screen.
+  const int16_t debugHeight = 12;
+  const int16_t debugY = tft.height() - debugHeight;
+  tft.fillRect(0, debugY, tft.width(), debugHeight, BACKGROUND_COLOR);
+  tft.setTextDatum(BL_DATUM);
+  tft.setTextSize(1);
+  const String ipOverlay = "IP: " + network::getWifiIpString();
+  tft.drawString(ipOverlay, 2, tft.height() - 2);
+#endif
 
   lastState = state;
 }
