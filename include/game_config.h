@@ -20,7 +20,7 @@ constexpr uint32_t DEFAULT_BOMB_DURATION_MS = 40000; // example: 40s
 static constexpr const char *DEFAULT_DEFUSE_CODE = "1234";
 
 // Optional default API endpoint. Replace with the real backend URL when known.
-static constexpr const char *DEFAULT_API_ENDPOINT = "https://n8n.santiso.xyz/webhook-test/ac64f84c-08b9-47e4-b252-a77f3411f0a9";
+static constexpr const char *DEFAULT_API_ENDPOINT = "192.168.1.234:9055/prop/";
 
 // Controls how the device interacts with the backend API. Additional configurability
 // will be added later; for now the mode is fixed to TestSendOnly.
