@@ -75,27 +75,6 @@ void drawCenteredText(const String &text, int16_t y, uint8_t textSize, int16_t c
 }
 }  // namespace
 
-void drawDebugIpFooter(const String &ipString) {
-#ifdef DEBUG
-  const String footer = ipString.isEmpty() ? String("IP: ...") : (String("IP: ") + ipString);
-  if (footer == bootDebugIpLine) {
-    return;
-  }
-
-  const int16_t footerHeight = 10;
-  const int16_t footerY = tft.height() - footerHeight;
-  tft.fillRect(0, footerY, tft.width(), footerHeight, BACKGROUND_COLOR);
-  tft.setTextDatum(BL_DATUM);
-  tft.setTextSize(1);
-  tft.drawString(footer, 0, tft.height() - 1);
-
-  bootDebugIpLine = footer;
-#else
-  (void)ipString;
-#endif
-}
-}  // namespace
-
 namespace ui {
 void formatTimeMMSS(uint32_t ms, char *buffer, size_t len) {
   if (len == 0 || buffer == nullptr) {
