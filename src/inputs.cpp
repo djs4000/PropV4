@@ -149,6 +149,9 @@ void updateInputs() {
 
   if (now - buttonsChangeMs >= BUTTON_DEBOUNCE_MS && debouncedButtons != rawButtonsPressed) {
     debouncedButtons = rawButtonsPressed;
+#ifdef DEBUG
+    Serial.println(debouncedButtons ? "BUTTONS: both pressed" : "BUTTONS: released");
+#endif
     if (debouncedButtons) {
       startButtonHold();
     } else {
