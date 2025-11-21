@@ -157,15 +157,15 @@ void renderBootScreen(const String &wifiSsid, bool wifiConnected, bool wifiFaile
   String wifiLine;
   if (wifiFailed) {
     const String apLabel = configApSsid.isEmpty() ? String("config AP") : configApSsid;
-    wifiLine = String("WiFi: failed, AP ") + apLabel;
+    wifiLine = String("failed → AP ") + apLabel;
   } else if (wifiConnected) {
-    wifiLine = String("WiFi: connected (") + (ipAddress.isEmpty() ? "IP pending" : ipAddress) + ")";
+    wifiLine = String("connected (") + (ipAddress.isEmpty() ? "IP pending" : ipAddress) + ")";
   } else {
-    wifiLine = String("WiFi: connecting to ") + wifiSsid;
+    wifiLine = String("connecting to ") + wifiSsid;
   }
   const String apiStatusValue = hasApiResponse ? "API response received" : "waiting for API response";
 
-  drawBootLine(wifiLine, 60, STATUS_TEXT_SIZE, lastBootWifiLine);
+  drawBootBlock("WiFi:", wifiLine, 60, STATUS_TEXT_SIZE, BOOT_DETAIL_TEXT_SIZE, lastBootWifiLine);
   drawBootBlock("Status:", apiStatusValue, 95, STATUS_TEXT_SIZE, BOOT_DETAIL_TEXT_SIZE, lastBootStatusLine);
   drawBootBlock("Endpoint:", apiEndpoint, 150, STATUS_TEXT_SIZE, BOOT_DETAIL_TEXT_SIZE, lastBootEndpointLine);
 }
