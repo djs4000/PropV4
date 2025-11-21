@@ -22,4 +22,7 @@ void formatTimeMMSS(uint32_t ms, char *buffer, size_t len);
 // Placeholder UI lifecycle hooks for future expansion.
 void initUI();
 void updateUI();
+
+// Display instructions when the device enters SoftAP configuration mode.
+void renderConfigPortalScreen(const String &ssid, const String &password);
 }  // namespace ui

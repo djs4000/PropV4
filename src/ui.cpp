@@ -261,6 +261,40 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   lastState = state;
 }
 
+void renderConfigPortalScreen(const String &ssid, const String &password) {
+  ensureDisplayReady();
+
+  // Force the main UI to redraw after leaving config mode since we repaint the
+  // full canvas here.
+  layoutDrawn = false;
+  bootLayoutDrawn = false;
+
+  static String lastRenderedSsid;
+  static String lastRenderedPassword;
+
+  if (lastRenderedSsid == ssid && lastRenderedPassword == password) {
+    return;
+  }
+
+  tft.fillScreen(BACKGROUND_COLOR);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextSize(TITLE_TEXT_SIZE);
+  tft.drawString("Config Mode", 10, 10);
+
+  tft.setTextSize(STATUS_TEXT_SIZE);
+  tft.drawString("Connect to:", 10, 50);
+  tft.drawString(ssid, 10, 70);
+
+  tft.drawString("Password:", 10, 100);
+  tft.drawString(password, 10, 120);
+
+  tft.setTextSize(BOOT_DETAIL_TEXT_SIZE);
+  tft.drawString("Open http://192.168.4.1 in a browser to update settings.", 10, 160);
+
+  lastRenderedSsid = ssid;
+  lastRenderedPassword = password;
+}
+
 void initUI() {
   // Additional UI initialization (web/touch) will be added later.
 }
