@@ -15,10 +15,13 @@ constexpr uint8_t TIMER_TEXT_SIZE = 5;
 constexpr uint8_t STATUS_TEXT_SIZE = 2;
 constexpr uint8_t CODE_TEXT_SIZE = 2;
 constexpr uint8_t BOOT_TEXT_SIZE = 2;
+constexpr uint8_t BOOT_ENDPOINT_TEXT_SIZE = 1;
 constexpr int16_t BOOT_TITLE_Y = 30;
 constexpr int16_t BOOT_STATUS_Y = 80;
 constexpr int16_t BOOT_DETAIL_Y = 120;
 constexpr int16_t BOOT_PROGRESS_Y = 170;
+constexpr int16_t BOOT_API_STATUS_Y = 230;
+constexpr int16_t BOOT_ENDPOINT_Y = 260;
 
 // Shifted downward to keep the title fully visible and better use the canvas height.
 constexpr int16_t TITLE_Y = 20;
@@ -37,6 +40,10 @@ bool bootScreenActive = false;
 bool bootLayoutDrawn = false;
 String bootStatusLine;
 String bootDetailLine;
+String bootApiStatusLine;
+String bootEndpointLine;
+String bootDebugIpLine;
+String lastKnownIp;
 
 int16_t barX() { return (tft.width() - BAR_WIDTH) / 2; }
 
@@ -99,6 +106,26 @@ void drawCenteredText(const String &text, int16_t y, uint8_t textSize, int16_t c
   tft.fillRect(0, clearY, tft.width(), clearHeight, BACKGROUND_COLOR);
   tft.drawString(text, tft.width() / 2, y);
 }
+
+void drawDebugIpFooter(const String &ipString) {
+#ifdef DEBUG
+  const String footer = ipString.isEmpty() ? String("IP: ...") : (String("IP: ") + ipString);
+  if (footer == bootDebugIpLine) {
+    return;
+  }
+
+  const int16_t footerHeight = 10;
+  const int16_t footerY = tft.height() - footerHeight;
+  tft.fillRect(0, footerY, tft.width(), footerHeight, BACKGROUND_COLOR);
+  tft.setTextDatum(BL_DATUM);
+  tft.setTextSize(1);
+  tft.drawString(footer, 0, tft.height() - 1);
+
+  bootDebugIpLine = footer;
+#else
+  (void)ipString;
+#endif
+}
 }  // namespace
 
 namespace ui {
@@ -121,11 +148,16 @@ void showBootScreen(const char *ssid) {
   layoutDrawn = false;
   bootStatusLine = "";
   bootDetailLine = "";
+  bootApiStatusLine = "";
+  bootEndpointLine = "";
+  bootDebugIpLine = "";
+  lastKnownIp = "";
   drawBootLayout(ssid);
   drawCenteredText("WiFi starting...", BOOT_PROGRESS_Y, BOOT_TEXT_SIZE, 28);
+  drawCenteredText("Waiting for API response...", BOOT_API_STATUS_Y, BOOT_TEXT_SIZE, 24);
 }
 
-void updateBootStatus(bool connected, const String &ipString) {
+void updateBootStatus(bool connected, const String &ipString, const String &apiEndpoint, bool apiResponseReceived) {
   if (!bootScreenActive) {
     return;
   }
@@ -141,11 +173,26 @@ void updateBootStatus(bool connected, const String &ipString) {
     bootStatusLine = status;
   }
 
-  const String detail = connected ? (String("IP: ") + ipString) : String("...");
+  const String detail = connected ? (ipString.isEmpty() ? String("IP: ...") : (String("IP: ") + ipString)) : String("...");
   if (detail != bootDetailLine) {
-    drawCenteredText(detail, BOOT_PROGRESS_Y + 30, BOOT_TEXT_SIZE, 24);
+    drawCenteredText(detail, BOOT_DETAIL_Y + 80, BOOT_TEXT_SIZE, 24);
     bootDetailLine = detail;
   }
+
+  const String apiStatus = connected ? (apiResponseReceived ? "API response received" : "Waiting for API response...")
+                                     : "API pending WiFi...";
+  if (apiStatus != bootApiStatusLine) {
+    drawCenteredText(apiStatus, BOOT_API_STATUS_Y, BOOT_TEXT_SIZE, 24);
+    bootApiStatusLine = apiStatus;
+  }
+
+  if (!apiEndpoint.isEmpty() && apiEndpoint != bootEndpointLine) {
+    drawCenteredText(String("Endpoint: ") + apiEndpoint, BOOT_ENDPOINT_Y, BOOT_ENDPOINT_TEXT_SIZE, 18);
+    bootEndpointLine = apiEndpoint;
+  }
+
+  lastKnownIp = ipString;
+  drawDebugIpFooter(ipString);
 }
 
 void initMainScreen() {
@@ -232,6 +279,8 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     tft.fillRect(0, CODE_Y - 16, tft.width(), 32, BACKGROUND_COLOR);
     lastCodeLength = 0;
   }
+
+  drawDebugIpFooter(lastKnownIp);
 
   lastState = state;
 }

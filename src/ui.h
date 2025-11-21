@@ -10,7 +10,7 @@ void initMainScreen();
 
 // Boot/connection screen helpers drawn prior to READY state.
 void showBootScreen(const char *ssid);
-void updateBootStatus(bool connected, const String &ipString);
+void updateBootStatus(bool connected, const String &ipString, const String &apiEndpoint, bool apiResponseReceived);
 
 // Render the primary game UI reflecting the provided state and progress values.
 void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs, float armingProgress01,

@@ -12,6 +12,7 @@
 // Cooperative scheduler timestamps
 static unsigned long lastStateUpdateMs = 0;
 static uint32_t configuredBombDurationMs = DEFAULT_BOMB_DURATION_MS;  // TODO: load from NVS
+static String configuredApiEndpoint = DEFAULT_API_ENDPOINT;           // TODO: load from NVS
 static bool mainScreenInitialized = false;
 static FlameState lastRenderedState = ON;
 static uint32_t lastRenderedRemainingMs = 0;
@@ -117,6 +118,7 @@ void setup() {
   // TODO: Validate that no buttons are held at boot to detect potential hardware faults.
   ui::initUI();
   ui::showBootScreen(DEFAULT_WIFI_SSID);
+  ui::updateBootStatus(false, String(""), configuredApiEndpoint, false);
   bootScreenShown = true;
   network::beginWifi();
 }
@@ -137,7 +139,8 @@ void loop() {
   if (getState() == ON) {
     const bool wifiConnected = network::isWifiConnected();
     if (bootScreenShown) {
-      ui::updateBootStatus(wifiConnected, wifiConnected ? network::getWifiIpString() : String(""));
+      ui::updateBootStatus(wifiConnected, wifiConnected ? network::getWifiIpString() : String(""),
+                          configuredApiEndpoint, network::hasReceivedApiResponse());
     }
   }
 
