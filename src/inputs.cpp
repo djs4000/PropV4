@@ -165,6 +165,12 @@ void updateInputs() {
 
   if (now - keyChangeMs >= KEY_DEBOUNCE_MS && debouncedKey != rawKey) {
     debouncedKey = rawKey;
+#ifdef DEBUG
+    if (debouncedKey != '\0') {
+      Serial.print("KEYPAD: ");
+      Serial.println(debouncedKey);
+    }
+#endif
     if (debouncedKey >= '0' && debouncedKey <= '9') {
       handleDigitPress(debouncedKey);
     }
