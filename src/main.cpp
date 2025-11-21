@@ -89,6 +89,9 @@ static void handleDebugSerialStateChange() {
       break;
     case '2':
       requestedState = ACTIVE;
+      // Ensure manual activation doesn't immediately revert to READY due to a
+      // non-running match status pulled from the network layer.
+      setMatchStatus(Running);
       break;
     case '3':
       requestedState = ARMING;
