@@ -7,6 +7,7 @@
 #include "state_machine.h"
 #include "ui.h"
 #include "util.h"
+#include "wifi_config.h"
 
 // Cooperative scheduler timestamps
 static unsigned long lastStateUpdateMs = 0;
@@ -15,6 +16,15 @@ static bool mainScreenInitialized = false;
 static FlameState lastRenderedState = ON;
 static uint32_t lastRenderedRemainingMs = 0;
 static float lastRenderedArmingProgress = -1.0f;
+
+static void renderBootScreenIfNeeded() {
+  if (mainScreenInitialized) {
+    return;
+  }
+
+  ui::renderBootScreen(DEFAULT_WIFI_SSID, network::isWifiConnected(), network::getWifiIpString(),
+                       DEFAULT_API_ENDPOINT, network::hasReceivedApiResponse());
+}
 
 static void renderMainUiIfNeeded(FlameState state) {
   // Placeholder progress wiring; will be replaced with real ARMING hold tracking.
@@ -123,6 +133,8 @@ void loop() {
 
   // Startup hardware self-checks (LEDs + audio) remain non-blocking via effects::updateEffects().
   effects::updateEffects();
+
+  renderBootScreenIfNeeded();
 
   ui::updateUI();
 
