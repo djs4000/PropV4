@@ -54,6 +54,12 @@ void renderStatus(FlameState state, bool wifiConnected, bool wifiError, const St
   static String lastIp = "";
   static MatchStatus lastMatchStatus = WaitingOnStart;
   static uint32_t lastMatchTimerBucket = 0;
+  static String lastStateLine;
+  static String lastWifiLine;
+  static String lastIpLine;
+  static String lastWifiErrorLine;
+  static String lastMatchLine;
+  static String lastTimerLine;
 
   const uint32_t timerBucket = matchTimerMs / 1000;  // Only update UI when visible seconds change.
 
@@ -66,15 +72,24 @@ void renderStatus(FlameState state, bool wifiConnected, bool wifiError, const St
 
   // Small status area to show current state without redrawing the whole screen.
   constexpr int16_t statusY = 80;
-  constexpr int16_t statusHeight = 140;
-  tft.fillRect(0, statusY, tft.width(), statusHeight, BACKGROUND_COLOR);
   tft.setTextColor(TEXT_COLOR, BACKGROUND_COLOR);
-  tft.setTextSize(2);
   tft.setTextDatum(TL_DATUM);
+
+  auto updateLine = [&](int16_t y, uint8_t textSize, const String &text, String &lastText) {
+    if (!hasRendered || text != lastText) {
+      const int16_t lineHeight = static_cast<int16_t>(textSize * 12 + 6);
+      tft.setTextSize(textSize);
+      tft.fillRect(0, y, tft.width(), lineHeight, BACKGROUND_COLOR);
+      if (!text.isEmpty()) {
+        tft.drawString(text, 10, y);
+      }
+      lastText = text;
+    }
+  };
 
   String stateText = "State: ";
   stateText += flameStateToString(state);
-  tft.drawString(stateText, 10, statusY + 5);
+  updateLine(statusY + 5, 2, stateText, lastStateLine);
 
   String wifiText = "WiFi: ";
   if (wifiConnected) {
@@ -84,29 +99,29 @@ void renderStatus(FlameState state, bool wifiConnected, bool wifiError, const St
   } else {
     wifiText += "Connecting...";
   }
-  tft.drawString(wifiText, 10, statusY + 30);
+  updateLine(statusY + 30, 2, wifiText, lastWifiLine);
 
+  String ipText;
   if (wifiConnected) {
-    String ipText = "IP: ";
+    ipText = "IP: ";
     ipText += wifiIp;
-    tft.setTextSize(1);
-    tft.drawString(ipText, 10, statusY + 55);
-    tft.setTextSize(2);
   }
+  updateLine(statusY + 55, 1, ipText, lastIpLine);
 
   // Show clear recovery instructions when WiFi failures push us into ERROR_STATE.
+  String wifiErrorText;
   if (wifiError) {
-    tft.setTextSize(1);
-    tft.drawString("WiFi Error - Hold both buttons to reset", 10, statusY + 50);
+    wifiErrorText = "WiFi Error - Hold both buttons to reset";
   }
+  updateLine(statusY + 50, 1, wifiErrorText, lastWifiErrorLine);
 
   String matchText = "Match: ";
   matchText += matchStatusToString(matchStatus);
-  tft.drawString(matchText, 10, statusY + 70);
+  updateLine(statusY + 70, 2, matchText, lastMatchLine);
 
   String timerText = "Timer: ";
   timerText += formatTimer(timerBucket * 1000);
-  tft.drawString(timerText, 10, statusY + 95);
+  updateLine(statusY + 95, 2, timerText, lastTimerLine);
 
   hasRendered = true;
   lastRenderedState = state;
