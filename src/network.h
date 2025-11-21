@@ -25,6 +25,7 @@ bool hasWifiFailedPermanently();  // True only when config portal is not running
 bool isConfigPortalActive();
 String getConfigPortalSsid();
 String getConfigPortalPassword();
+String getConfigPortalAddress();
 String getWifiIpString();
 uint64_t getLastSuccessfulApiMs();
 MatchStatus getRemoteMatchStatus();

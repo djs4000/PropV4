@@ -25,8 +25,9 @@ static void renderBootScreenIfNeeded() {
 
   const bool wifiFailed = network::isConfigPortalActive() || network::hasWifiFailedPermanently();
   ui::renderBootScreen(network::getConfiguredWifiSsid(), network::isWifiConnected(), wifiFailed,
-                       network::getConfigPortalSsid(), network::getWifiIpString(),
-                       network::getConfiguredApiEndpoint(), network::hasReceivedApiResponse());
+                       network::getConfigPortalSsid(), network::getConfigPortalAddress(),
+                       network::getWifiIpString(), network::getConfiguredApiEndpoint(),
+                       network::hasReceivedApiResponse());
 }
 
 static void renderMainUiIfNeeded(FlameState state) {

@@ -7,8 +7,9 @@
 namespace ui {
 // Draw the boot screen showing WiFi/API progress before entering READY.
 void renderBootScreen(const String &wifiSsid, bool wifiConnected, bool wifiFailed,
-                      const String &configApSsid, const String &ipAddress,
-                      const String &apiEndpoint, bool hasApiResponse);
+                      const String &configApSsid, const String &configApAddress,
+                      const String &ipAddress, const String &apiEndpoint,
+                      bool hasApiResponse);
 
 // Initialize the TFT and draw the static main screen layout (title, outlines, etc.).
 void initMainScreen();

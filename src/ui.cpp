@@ -149,8 +149,9 @@ void formatTimeMMSS(uint32_t ms, char *buffer, size_t len) {
 }
 
 void renderBootScreen(const String &wifiSsid, bool wifiConnected, bool wifiFailed,
-                      const String &configApSsid, const String &ipAddress,
-                      const String &apiEndpoint, bool hasApiResponse) {
+                      const String &configApSsid, const String &configApAddress,
+                      const String &ipAddress, const String &apiEndpoint,
+                      bool hasApiResponse) {
   ensureDisplayReady();
   drawBootLayout();
 
@@ -163,7 +164,10 @@ void renderBootScreen(const String &wifiSsid, bool wifiConnected, bool wifiFaile
   } else {
     wifiLine = String("connecting to ") + wifiSsid;
   }
-  const String apiStatusValue = hasApiResponse ? "API response received" : "waiting for API response";
+  const String apiStatusValue =
+      wifiFailed ? String("Open ") + (configApAddress.isEmpty() ? String("http://192.168.4.1") : configApAddress) +
+                       " to configure"
+                 : hasApiResponse ? "API response received" : "waiting for API response";
 
   drawBootBlock("WiFi:", wifiLine, 60, STATUS_TEXT_SIZE, BOOT_DETAIL_TEXT_SIZE, lastBootWifiLine);
   drawBootBlock("Status:", apiStatusValue, 95, STATUS_TEXT_SIZE, BOOT_DETAIL_TEXT_SIZE, lastBootStatusLine);
@@ -296,7 +300,10 @@ void renderConfigPortalScreen(const String &ssid, const String &password) {
   tft.drawString(password, 10, 120);
 
   tft.setTextSize(BOOT_DETAIL_TEXT_SIZE);
-  tft.drawString("Open http://192.168.4.1 in a browser to update settings.", 10, 160);
+  const String portalAddress = network::getConfigPortalAddress();
+  tft.drawString("Open " + (portalAddress.isEmpty() ? String("http://192.168.4.1") : portalAddress) +
+                     " in a browser to update settings.",
+                 10, 160);
 
   lastRenderedSsid = ssid;
   lastRenderedPassword = password;

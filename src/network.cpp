@@ -247,6 +247,17 @@ String getConfigPortalSsid() { return configPortalSsid; }
 
 String getConfigPortalPassword() { return String(SOFTAP_PASSWORD); }
 
+String getConfigPortalAddress() {
+  if (configPortalActive) {
+    return String("http://") + WiFi.softAPIP().toString();
+  }
+  if (isWifiConnected()) {
+    return String("http://") + WiFi.localIP().toString();
+  }
+  // Default SoftAP IP for user guidance when the portal is starting up.
+  return String("http://192.168.4.1");
+}
+
 String getWifiIpString() {
   if (!isWifiConnected()) {
     return String("");
@@ -403,6 +414,8 @@ void beginConfigPortal() {
   WiFi.softAP(configPortalSsid.c_str(), SOFTAP_PASSWORD);
   startWebServerIfNeeded();
 
+  const String portalAddress = getConfigPortalAddress();
+
   configPortalActive = true;
   wifiFailedPermanently = false;  // Prevent ERROR state while AP is active.
 #ifdef DEBUG
@@ -410,6 +423,8 @@ void beginConfigPortal() {
   Serial.print(configPortalSsid);
   Serial.print(" Password: ");
   Serial.println(SOFTAP_PASSWORD);
+  Serial.print("Browse to ");
+  Serial.println(portalAddress);
 #endif
 }
 
