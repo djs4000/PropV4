@@ -14,6 +14,7 @@ constexpr uint16_t FOREGROUND_COLOR = TFT_WHITE;
 constexpr uint8_t TITLE_TEXT_SIZE = 2;
 constexpr uint8_t TIMER_TEXT_SIZE = 5;
 constexpr uint8_t STATUS_TEXT_SIZE = 2;
+constexpr uint8_t BOOT_DETAIL_TEXT_SIZE = 1;
 constexpr uint8_t CODE_TEXT_SIZE = 2;
 
 // Shifted downward to keep the title fully visible and better use the canvas height.
@@ -77,8 +78,32 @@ void drawBootLine(const String &text, int16_t y, uint8_t textSize, String &cache
   tft.setTextSize(textSize);
   const int16_t clearHeight = textSize * 8 + 2;
   tft.fillRect(0, y, tft.width(), clearHeight, BACKGROUND_COLOR);
-  tft.drawString(text, 10, y + clearHeight / 2);
+  tft.drawString(text, 10, y);
   cache = text;
+}
+
+void drawBootBlock(const String &label, const String &value, int16_t y, uint8_t labelTextSize,
+                   uint8_t valueTextSize, String &cache) {
+  const String combined = label + "|" + value;
+  if (combined == cache) {
+    return;
+  }
+
+  const int16_t labelHeight = labelTextSize * 8;
+  const int16_t valueHeight = valueTextSize * 8;
+  const int16_t padding = 4;
+  const int16_t blockHeight = labelHeight + valueHeight + padding;
+
+  tft.fillRect(0, y, tft.width(), blockHeight, BACKGROUND_COLOR);
+
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextSize(labelTextSize);
+  tft.drawString(label, 10, y);
+
+  tft.setTextSize(valueTextSize);
+  tft.drawString(value, 10, y + labelHeight + padding / 2);
+
+  cache = combined;
 }
 
 void drawStaticLayout() {
@@ -131,12 +156,11 @@ void renderBootScreen(const String &wifiSsid, bool wifiConnected, const String &
   const String wifiLine =
       wifiConnected ? String("WiFi: connected (") + (ipAddress.isEmpty() ? "IP pending" : ipAddress) + ")"
                     : String("WiFi: connecting to ") + wifiSsid;
-  const String apiStatusLine = hasApiResponse ? "Status: API response received" : "Status: waiting for API response";
-  const String endpointLine = String("Endpoint: ") + apiEndpoint;
+  const String apiStatusValue = hasApiResponse ? "API response received" : "waiting for API response";
 
-  drawBootLine(wifiLine, 70, STATUS_TEXT_SIZE, lastBootWifiLine);
-  drawBootLine(apiStatusLine, 110, STATUS_TEXT_SIZE, lastBootStatusLine);
-  drawBootLine(endpointLine, 150, STATUS_TEXT_SIZE, lastBootEndpointLine);
+  drawBootLine(wifiLine, 60, STATUS_TEXT_SIZE, lastBootWifiLine);
+  drawBootBlock("Status:", apiStatusValue, 95, STATUS_TEXT_SIZE, BOOT_DETAIL_TEXT_SIZE, lastBootStatusLine);
+  drawBootBlock("Endpoint:", apiEndpoint, 150, STATUS_TEXT_SIZE, BOOT_DETAIL_TEXT_SIZE, lastBootEndpointLine);
 }
 
 void initMainScreen() {
