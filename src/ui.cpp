@@ -71,7 +71,7 @@ void renderStatus(FlameState state, bool wifiConnected, bool wifiError, const St
   }
 
   // Small status area to show current state without redrawing the whole screen.
-  constexpr int16_t statusY = 80;
+  constexpr int16_t statusY = 60;
   tft.setTextColor(TEXT_COLOR, BACKGROUND_COLOR);
   tft.setTextDatum(TL_DATUM);
 
@@ -89,7 +89,7 @@ void renderStatus(FlameState state, bool wifiConnected, bool wifiError, const St
 
   String stateText = "State: ";
   stateText += flameStateToString(state);
-  updateLine(statusY + 5, 2, stateText, lastStateLine);
+  updateLine(statusY + 0, 2, stateText, lastStateLine);
 
   String wifiText = "WiFi: ";
   if (wifiConnected) {
@@ -106,22 +106,22 @@ void renderStatus(FlameState state, bool wifiConnected, bool wifiError, const St
     ipText = "IP: ";
     ipText += wifiIp;
   }
-  updateLine(statusY + 55, 1, ipText, lastIpLine);
+  updateLine(statusY + 60, 1, ipText, lastIpLine);
 
   // Show clear recovery instructions when WiFi failures push us into ERROR_STATE.
   String wifiErrorText;
   if (wifiError) {
     wifiErrorText = "WiFi Error - Hold both buttons to reset";
   }
-  updateLine(statusY + 50, 1, wifiErrorText, lastWifiErrorLine);
+  updateLine(statusY + 80, 1, wifiErrorText, lastWifiErrorLine);
 
   String matchText = "Match: ";
   matchText += matchStatusToString(matchStatus);
-  updateLine(statusY + 70, 2, matchText, lastMatchLine);
+  updateLine(statusY + 110, 2, matchText, lastMatchLine);
 
   String timerText = "Timer: ";
   timerText += formatTimer(timerBucket * 1000);
-  updateLine(statusY + 95, 2, timerText, lastTimerLine);
+  updateLine(statusY + 140, 2, timerText, lastTimerLine);
 
   hasRendered = true;
   lastRenderedState = state;
