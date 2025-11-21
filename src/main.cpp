@@ -17,6 +17,7 @@ static FlameState lastRenderedState = ON;
 static uint32_t lastRenderedRemainingMs = 0;
 static float lastRenderedArmingProgress = -1.0f;
 static bool configScreenRendered = false;
+static uint32_t armingStartMs = 0;
 
 static void renderBootScreenIfNeeded() {
   if (mainScreenInitialized) {
@@ -31,8 +32,25 @@ static void renderBootScreenIfNeeded() {
 }
 
 static void renderMainUiIfNeeded(FlameState state) {
-  // Placeholder progress wiring; will be replaced with real ARMING hold tracking.
-  const float armingProgress = (state == ARMING) ? 0.0f : 0.0f;
+  const unsigned long now = millis();
+
+  // Track ARMING entry time locally so the progress bar can animate toward the
+  // required hold duration without blocking the loop. This will later be
+  // replaced/augmented with input-driven hold timing.
+  if (state == ARMING) {
+    if (armingStartMs == 0) {
+      armingStartMs = now;
+    }
+  } else {
+    armingStartMs = 0;
+  }
+
+  float armingProgress = 0.0f;
+  if (state == ARMING && armingStartMs != 0) {
+    const uint32_t elapsed = now - armingStartMs;
+    armingProgress = static_cast<float>(elapsed) / static_cast<float>(BUTTON_HOLD_MS);
+    armingProgress = constrain(armingProgress, 0.0f, 1.0f);
+  }
   const uint32_t remainingMs = configuredBombDurationMs;  // Countdown hook will update this later.
 
   bool shouldRender = false;
