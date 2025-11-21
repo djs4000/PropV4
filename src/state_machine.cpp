@@ -46,8 +46,12 @@ void updateState() {
     return;
   }
 
-  // Sync the latest match status from the network module.
-  setMatchStatus(network::getRemoteMatchStatus());
+  // Sync the latest match status from the network module only after a
+  // successful API response. This prevents manual/debug overrides from being
+  // immediately reset when the API is disabled or hasn't provided data yet.
+  if (network::hasReceivedApiResponse()) {
+    setMatchStatus(network::getRemoteMatchStatus());
+  }
 
   // Placeholder button handling: actual input module will call into the state
   // machine to start/stop arming. For now we maintain stub timing logic to
