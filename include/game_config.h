@@ -22,6 +22,12 @@ static constexpr const char *DEFAULT_DEFUSE_CODE = "1234";
 // Optional default API endpoint. Replace with the real backend URL when known.
 static constexpr const char *DEFAULT_API_ENDPOINT = "http://192.168.1.234:9055/prop";
 
+// SoftAP configuration used when station mode fails and the device enters the
+// configuration portal. The SSID is generated at runtime using the prefix and
+// the last bytes of the MAC address for uniqueness.
+static constexpr const char *SOFTAP_SSID_PREFIX = "DigitalFlame-";
+static constexpr const char *SOFTAP_PASSWORD = "digitalflame";
+
 // Controls how the device interacts with the backend API. Additional configurability
 // will be added later; for now the mode is fixed to TestSendOnly.
 enum class ApiMode {

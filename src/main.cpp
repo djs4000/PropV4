@@ -11,19 +11,23 @@
 
 // Cooperative scheduler timestamps
 static unsigned long lastStateUpdateMs = 0;
-static uint32_t configuredBombDurationMs = DEFAULT_BOMB_DURATION_MS;  // TODO: load from NVS
+static uint32_t configuredBombDurationMs = DEFAULT_BOMB_DURATION_MS;
 static bool mainScreenInitialized = false;
 static FlameState lastRenderedState = ON;
 static uint32_t lastRenderedRemainingMs = 0;
 static float lastRenderedArmingProgress = -1.0f;
+static bool configScreenRendered = false;
 
 static void renderBootScreenIfNeeded() {
   if (mainScreenInitialized) {
     return;
   }
 
-  ui::renderBootScreen(DEFAULT_WIFI_SSID, network::isWifiConnected(), network::getWifiIpString(),
-                       DEFAULT_API_ENDPOINT, network::hasReceivedApiResponse());
+  const bool wifiFailed = network::isConfigPortalActive() || network::hasWifiFailedPermanently();
+  ui::renderBootScreen(network::getConfiguredWifiSsid(), network::isWifiConnected(), wifiFailed,
+                       network::getConfigPortalSsid(), network::getConfigPortalAddress(),
+                       network::getWifiIpString(), network::getConfiguredApiEndpoint(),
+                       network::hasReceivedApiResponse());
 }
 
 static void renderMainUiIfNeeded(FlameState state) {
@@ -124,10 +128,14 @@ void setup() {
   initInputs();
   ui::initUI();
   network::beginWifi();
+  configuredBombDurationMs = network::getConfiguredBombDurationMs();
 }
 
 void loop() {
   const unsigned long now = millis();
+
+  // Keep the cached bomb duration aligned with any persisted updates.
+  configuredBombDurationMs = network::getConfiguredBombDurationMs();
 
   updateInputs();
 
@@ -140,6 +148,21 @@ void loop() {
 
   // Networking cadence is controlled internally based on API_POST_INTERVAL_MS.
   network::updateWifi();
+
+  if (network::isConfigPortalActive()) {
+    if (!configScreenRendered) {
+      ui::renderConfigPortalScreen(network::getConfigPortalSsid(), network::getConfigPortalPassword());
+      configScreenRendered = true;
+    }
+  } else if (configScreenRendered) {
+    // Force boot/main UI to refresh after leaving config mode.
+    configScreenRendered = false;
+    mainScreenInitialized = false;
+  }
+
+  // Always service the configuration web server so LAN clients can load the page
+  // even when STA mode is connected.
+  network::updateConfigPortal();
 
 #ifdef DEBUG
   handleDebugSerialStateChange();

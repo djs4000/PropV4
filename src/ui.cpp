@@ -148,17 +148,28 @@ void formatTimeMMSS(uint32_t ms, char *buffer, size_t len) {
   snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(minutes), static_cast<unsigned>(seconds));
 }
 
-void renderBootScreen(const String &wifiSsid, bool wifiConnected, const String &ipAddress,
-                      const String &apiEndpoint, bool hasApiResponse) {
+void renderBootScreen(const String &wifiSsid, bool wifiConnected, bool wifiFailed,
+                      const String &configApSsid, const String &configApAddress,
+                      const String &ipAddress, const String &apiEndpoint,
+                      bool hasApiResponse) {
   ensureDisplayReady();
   drawBootLayout();
 
-  const String wifiLine =
-      wifiConnected ? String("WiFi: connected (") + (ipAddress.isEmpty() ? "IP pending" : ipAddress) + ")"
-                    : String("WiFi: connecting to ") + wifiSsid;
-  const String apiStatusValue = hasApiResponse ? "API response received" : "waiting for API response";
+  String wifiLine;
+  if (wifiFailed) {
+    const String apLabel = configApSsid.isEmpty() ? String("config AP") : configApSsid;
+    wifiLine = String("failed → AP ") + apLabel;
+  } else if (wifiConnected) {
+    wifiLine = String("connected (") + (ipAddress.isEmpty() ? "IP pending" : ipAddress) + ")";
+  } else {
+    wifiLine = String("connecting to ") + wifiSsid;
+  }
+  const String apiStatusValue =
+      wifiFailed ? String("Open ") + (configApAddress.isEmpty() ? String("http://192.168.4.1") : configApAddress) +
+                       " to configure"
+                 : hasApiResponse ? "API response received" : "waiting for API response";
 
-  drawBootLine(wifiLine, 60, STATUS_TEXT_SIZE, lastBootWifiLine);
+  drawBootBlock("WiFi:", wifiLine, 60, STATUS_TEXT_SIZE, BOOT_DETAIL_TEXT_SIZE, lastBootWifiLine);
   drawBootBlock("Status:", apiStatusValue, 95, STATUS_TEXT_SIZE, BOOT_DETAIL_TEXT_SIZE, lastBootStatusLine);
   drawBootBlock("Endpoint:", apiEndpoint, 150, STATUS_TEXT_SIZE, BOOT_DETAIL_TEXT_SIZE, lastBootEndpointLine);
 }
@@ -259,6 +270,43 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
 #endif
 
   lastState = state;
+}
+
+void renderConfigPortalScreen(const String &ssid, const String &password) {
+  ensureDisplayReady();
+
+  // Force the main UI to redraw after leaving config mode since we repaint the
+  // full canvas here.
+  layoutDrawn = false;
+  bootLayoutDrawn = false;
+
+  static String lastRenderedSsid;
+  static String lastRenderedPassword;
+
+  if (lastRenderedSsid == ssid && lastRenderedPassword == password) {
+    return;
+  }
+
+  tft.fillScreen(BACKGROUND_COLOR);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextSize(TITLE_TEXT_SIZE);
+  tft.drawString("Config Mode", 10, 10);
+
+  tft.setTextSize(STATUS_TEXT_SIZE);
+  tft.drawString("Connect to:", 10, 50);
+  tft.drawString(ssid, 10, 70);
+
+  tft.drawString("Password:", 10, 100);
+  tft.drawString(password, 10, 120);
+
+  tft.setTextSize(BOOT_DETAIL_TEXT_SIZE);
+  const String portalAddress = network::getConfigPortalAddress();
+  tft.drawString("Open " + (portalAddress.isEmpty() ? String("http://192.168.4.1") : portalAddress) +
+                     " in a browser to update settings.",
+                 10, 160);
+
+  lastRenderedSsid = ssid;
+  lastRenderedPassword = password;
 }
 
 void initUI() {
