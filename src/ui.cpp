@@ -148,14 +148,21 @@ void formatTimeMMSS(uint32_t ms, char *buffer, size_t len) {
   snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(minutes), static_cast<unsigned>(seconds));
 }
 
-void renderBootScreen(const String &wifiSsid, bool wifiConnected, const String &ipAddress,
+void renderBootScreen(const String &wifiSsid, bool wifiConnected, bool wifiFailed,
+                      const String &configApSsid, const String &ipAddress,
                       const String &apiEndpoint, bool hasApiResponse) {
   ensureDisplayReady();
   drawBootLayout();
 
-  const String wifiLine =
-      wifiConnected ? String("WiFi: connected (") + (ipAddress.isEmpty() ? "IP pending" : ipAddress) + ")"
-                    : String("WiFi: connecting to ") + wifiSsid;
+  String wifiLine;
+  if (wifiFailed) {
+    const String apLabel = configApSsid.isEmpty() ? String("config AP") : configApSsid;
+    wifiLine = String("WiFi: failed, AP ") + apLabel;
+  } else if (wifiConnected) {
+    wifiLine = String("WiFi: connected (") + (ipAddress.isEmpty() ? "IP pending" : ipAddress) + ")";
+  } else {
+    wifiLine = String("WiFi: connecting to ") + wifiSsid;
+  }
   const String apiStatusValue = hasApiResponse ? "API response received" : "waiting for API response";
 
   drawBootLine(wifiLine, 60, STATUS_TEXT_SIZE, lastBootWifiLine);

@@ -23,9 +23,10 @@ static void renderBootScreenIfNeeded() {
     return;
   }
 
-  ui::renderBootScreen(network::getConfiguredWifiSsid(), network::isWifiConnected(),
-                       network::getWifiIpString(), network::getConfiguredApiEndpoint(),
-                       network::hasReceivedApiResponse());
+  const bool wifiFailed = network::isConfigPortalActive() || network::hasWifiFailedPermanently();
+  ui::renderBootScreen(network::getConfiguredWifiSsid(), network::isWifiConnected(), wifiFailed,
+                       network::getConfigPortalSsid(), network::getWifiIpString(),
+                       network::getConfiguredApiEndpoint(), network::hasReceivedApiResponse());
 }
 
 static void renderMainUiIfNeeded(FlameState state) {
