@@ -17,7 +17,6 @@ static FlameState lastRenderedState = ON;
 static uint32_t lastRenderedRemainingMs = 0;
 static float lastRenderedArmingProgress = -1.0f;
 static bool configScreenRendered = false;
-static uint32_t armingStartMs = 0;
 
 static void renderBootScreenIfNeeded() {
   if (mainScreenInitialized) {
@@ -34,20 +33,9 @@ static void renderBootScreenIfNeeded() {
 static void renderMainUiIfNeeded(FlameState state) {
   const unsigned long now = millis();
 
-  // Track ARMING entry time locally so the progress bar can animate toward the
-  // required hold duration without blocking the loop. This will later be
-  // replaced/augmented with input-driven hold timing.
-  if (state == ARMING) {
-    if (armingStartMs == 0) {
-      armingStartMs = now;
-    }
-  } else {
-    armingStartMs = 0;
-  }
-
   float armingProgress = 0.0f;
-  if (state == ARMING && armingStartMs != 0) {
-    const uint32_t elapsed = now - armingStartMs;
+  if (state == ARMING && isButtonHoldActive() && getButtonHoldStartMs() != 0) {
+    const uint32_t elapsed = now - getButtonHoldStartMs();
     armingProgress = static_cast<float>(elapsed) / static_cast<float>(BUTTON_HOLD_MS);
     armingProgress = constrain(armingProgress, 0.0f, 1.0f);
   }
@@ -71,7 +59,9 @@ static void renderMainUiIfNeeded(FlameState state) {
   }
 
   if (shouldRender) {
-    ui::renderState(state, configuredBombDurationMs, remainingMs, armingProgress, DEFUSE_CODE_LENGTH, 0);
+    const uint8_t enteredDigits = (state == ARMED) ? getEnteredDigits() : 0;
+    ui::renderState(state, configuredBombDurationMs, remainingMs, armingProgress, DEFUSE_CODE_LENGTH,
+                    enteredDigits);
     lastRenderedState = state;
     lastRenderedRemainingMs = remainingMs;
     lastRenderedArmingProgress = armingProgress;
