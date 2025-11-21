@@ -55,6 +55,11 @@ static bool webServerRoutesConfigured = false;
 // Timeout for each WiFi connection attempt before retrying.
 static constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 5000;
 
+// Forward declarations for config portal route handlers to ensure registration
+// compiles before definitions later in the file.
+static void handleConfigPortalGet();
+static void handleConfigPortalSave();
+
 static Preferences &getPreferences() {
   if (!preferencesInitialized) {
     preferences.begin("digital_flame", false);
