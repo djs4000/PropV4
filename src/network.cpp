@@ -94,6 +94,27 @@ static void persistRuntimeConfig() {
   prefs.putString("api_endpoint", runtimeConfig.apiEndpoint);
 }
 
+static void configureWebServerRoutes() {
+  if (webServerRoutesConfigured) {
+    return;
+  }
+  server.on("/", HTTP_GET, handleConfigPortalGet);
+  server.on("/save", HTTP_POST, handleConfigPortalSave);
+  server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
+
+  webServerRoutesConfigured = true;
+}
+
+static void startWebServerIfNeeded() {
+  configureWebServerRoutes();
+  if (webServerRunning) {
+    return;
+  }
+
+  server.begin();
+  webServerRunning = true;
+}
+
 // Starts a single WiFi attempt without blocking the main loop.
 static void startWifiAttempt() {
   wifiAttemptStartMs = millis();
@@ -156,17 +177,6 @@ static void handleConfigPortalSave() {
   configPortalReconnectRequested = true;
 }
 
-static void configureWebServerRoutes() {
-  if (webServerRoutesConfigured) {
-    return;
-  }
-  server.on("/", HTTP_GET, handleConfigPortalGet);
-  server.on("/save", HTTP_POST, handleConfigPortalSave);
-  server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
-
-  webServerRoutesConfigured = true;
-}
-
 const String &getConfiguredWifiSsid() { return runtimeConfig.wifiSsid; }
 const String &getConfiguredApiEndpoint() { return runtimeConfig.apiEndpoint; }
 const String &getConfiguredDefuseCode() { return runtimeConfig.defuseCode; }
@@ -179,6 +189,7 @@ void beginWifi() {
   configPortalActive = false;
   configPortalReconnectRequested = false;
   webServerRunning = false;
+  webServerRoutesConfigured = false;
   lastSuccessfulApiMs = millis();  // Prevent false timeouts before first API call.
   startWifiAttempt();
 }
@@ -197,11 +208,7 @@ void updateWifi() {
     lastSuccessfulApiMs = millis();
 
     // Ensure the configuration web server is available on the LAN even when STA connects.
-    if (!webServerRunning) {
-      configureWebServerRoutes();
-      server.begin();
-      webServerRunning = true;
-    }
+    startWebServerIfNeeded();
     return;
   }
 
@@ -389,11 +396,7 @@ void beginConfigPortal() {
   configPortalSsid = String(SOFTAP_SSID_PREFIX) + String(suffix);
 
   WiFi.softAP(configPortalSsid.c_str(), SOFTAP_PASSWORD);
-  configureWebServerRoutes();
-  if (!webServerRunning) {
-    server.begin();
-    webServerRunning = true;
-  }
+  startWebServerIfNeeded();
 
   configPortalActive = true;
   wifiFailedPermanently = false;  // Prevent ERROR state while AP is active.
@@ -416,6 +419,7 @@ void updateConfigPortal() {
     configPortalReconnectRequested = false;
     server.stop();
     webServerRunning = false;
+    webServerRoutesConfigured = false;  // Re-register routes after restart to avoid missing handlers.
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_STA);
     configPortalActive = false;
