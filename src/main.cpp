@@ -152,12 +152,15 @@ void loop() {
       ui::renderConfigPortalScreen(network::getConfigPortalSsid(), network::getConfigPortalPassword());
       configScreenRendered = true;
     }
-    network::updateConfigPortal();
   } else if (configScreenRendered) {
     // Force boot/main UI to refresh after leaving config mode.
     configScreenRendered = false;
     mainScreenInitialized = false;
   }
+
+  // Always service the configuration web server so LAN clients can load the page
+  // even when STA mode is connected.
+  network::updateConfigPortal();
 
 #ifdef DEBUG
   handleDebugSerialStateChange();

@@ -49,6 +49,8 @@ static WebServer server(80);
 static bool configPortalActive = false;
 static bool configPortalReconnectRequested = false;
 static String configPortalSsid;
+static bool webServerRunning = false;
+static bool webServerRoutesConfigured = false;
 
 // Timeout for each WiFi connection attempt before retrying.
 static constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 5000;
@@ -155,9 +157,14 @@ static void handleConfigPortalSave() {
 }
 
 static void configureWebServerRoutes() {
+  if (webServerRoutesConfigured) {
+    return;
+  }
   server.on("/", HTTP_GET, handleConfigPortalGet);
   server.on("/save", HTTP_POST, handleConfigPortalSave);
   server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
+
+  webServerRoutesConfigured = true;
 }
 
 const String &getConfiguredWifiSsid() { return runtimeConfig.wifiSsid; }
@@ -171,6 +178,7 @@ void beginWifi() {
   wifiFailedPermanently = false;
   configPortalActive = false;
   configPortalReconnectRequested = false;
+  webServerRunning = false;
   lastSuccessfulApiMs = millis();  // Prevent false timeouts before first API call.
   startWifiAttempt();
 }
@@ -187,6 +195,13 @@ void updateWifi() {
   // Successful connection ends the retry loop; keep timestamp fresh for timeout logic.
   if (WiFi.status() == WL_CONNECTED) {
     lastSuccessfulApiMs = millis();
+
+    // Ensure the configuration web server is available on the LAN even when STA connects.
+    if (!webServerRunning) {
+      configureWebServerRoutes();
+      server.begin();
+      webServerRunning = true;
+    }
     return;
   }
 
@@ -375,7 +390,10 @@ void beginConfigPortal() {
 
   WiFi.softAP(configPortalSsid.c_str(), SOFTAP_PASSWORD);
   configureWebServerRoutes();
-  server.begin();
+  if (!webServerRunning) {
+    server.begin();
+    webServerRunning = true;
+  }
 
   configPortalActive = true;
   wifiFailedPermanently = false;  // Prevent ERROR state while AP is active.
@@ -388,15 +406,16 @@ void beginConfigPortal() {
 }
 
 void updateConfigPortal() {
-  if (!configPortalActive) {
+  if (!webServerRunning) {
     return;
   }
 
   server.handleClient();
 
-  if (configPortalReconnectRequested) {
+  if (configPortalActive && configPortalReconnectRequested) {
     configPortalReconnectRequested = false;
     server.stop();
+    webServerRunning = false;
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_STA);
     configPortalActive = false;
