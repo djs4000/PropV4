@@ -15,13 +15,15 @@ constexpr uint8_t TIMER_TEXT_SIZE = 5;
 constexpr uint8_t STATUS_TEXT_SIZE = 2;
 constexpr uint8_t CODE_TEXT_SIZE = 2;
 
-constexpr int16_t TITLE_Y = 8;
-constexpr int16_t TIMER_Y = 40;
-constexpr int16_t STATUS_Y = 110;
-constexpr int16_t BAR_Y = 145;
+// Shifted downward to keep the title fully visible and better use the canvas height.
+constexpr int16_t TITLE_Y = 20;
+constexpr int16_t TIMER_Y = 80;
+constexpr int16_t STATUS_Y = 150;
+constexpr int16_t BAR_Y = 185;
 constexpr int16_t BAR_WIDTH = 200;
 constexpr int16_t BAR_HEIGHT = 16;
-constexpr int16_t CODE_Y = 210;
+constexpr int16_t BAR_BORDER = 2;
+constexpr int16_t CODE_Y = 260;
 
 TFT_eSPI tft = TFT_eSPI();
 bool screenInitialized = false;
@@ -57,7 +59,9 @@ void drawStaticLayout() {
   tft.drawString("Digital Flame", tft.width() / 2, TITLE_Y);
 
   // Progress bar outline
-  tft.drawRect(barX(), BAR_Y, BAR_WIDTH, BAR_HEIGHT, FOREGROUND_COLOR);
+  for (int i = 0; i < BAR_BORDER; ++i) {
+    tft.drawRect(barX() + i, BAR_Y + i, BAR_WIDTH - 2 * i, BAR_HEIGHT - 2 * i, FOREGROUND_COLOR);
+  }
 
   layoutDrawn = true;
 }
@@ -94,7 +98,8 @@ void initMainScreen() {
   drawCenteredText("Status:", STATUS_Y, STATUS_TEXT_SIZE, 24);
 
   // Clear progress fill area.
-  tft.fillRect(barX() + 1, BAR_Y + 1, BAR_WIDTH - 2, BAR_HEIGHT - 2, BACKGROUND_COLOR);
+  tft.fillRect(barX() + BAR_BORDER, BAR_Y + BAR_BORDER, BAR_WIDTH - 2 * BAR_BORDER,
+               BAR_HEIGHT - 2 * BAR_BORDER, BACKGROUND_COLOR);
 
   // Clear potential defuse code area.
   tft.fillRect(0, CODE_Y - 16, tft.width(), 32, BACKGROUND_COLOR);
@@ -131,12 +136,14 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
 
   // Progress bar fill (only visible during arming, empty otherwise)
   const float clampedProgress = (state == ARMING) ? constrain(armingProgress01, 0.0f, 1.0f) : 0.0f;
-  const int16_t innerWidth = BAR_WIDTH - 2;
+  const int16_t innerWidth = BAR_WIDTH - 2 * BAR_BORDER;
   const int16_t fillWidth = static_cast<int16_t>(innerWidth * clampedProgress);
   if (fillWidth != lastBarFill) {
-    tft.fillRect(barX() + 1, BAR_Y + 1, innerWidth, BAR_HEIGHT - 2, BACKGROUND_COLOR);
+    tft.fillRect(barX() + BAR_BORDER, BAR_Y + BAR_BORDER, innerWidth, BAR_HEIGHT - 2 * BAR_BORDER,
+                 BACKGROUND_COLOR);
     if (fillWidth > 0) {
-      tft.fillRect(barX() + 1, BAR_Y + 1, fillWidth, BAR_HEIGHT - 2, FOREGROUND_COLOR);
+      tft.fillRect(barX() + BAR_BORDER, BAR_Y + BAR_BORDER, fillWidth, BAR_HEIGHT - 2 * BAR_BORDER,
+                   FOREGROUND_COLOR);
     }
     lastBarFill = fillWidth;
   }
