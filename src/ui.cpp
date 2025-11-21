@@ -7,129 +7,171 @@
 namespace {
 constexpr uint8_t BACKLIGHT_PIN = 21;
 constexpr uint16_t BACKGROUND_COLOR = TFT_BLACK;
-constexpr uint16_t TITLE_COLOR = TFT_ORANGE;
-constexpr uint16_t TEXT_COLOR = TFT_WHITE;
+constexpr uint16_t FOREGROUND_COLOR = TFT_WHITE;
+
+// Layout constants tuned for a 240x320 portrait canvas (rotation 0).
+constexpr uint8_t TITLE_TEXT_SIZE = 2;
+constexpr uint8_t TIMER_TEXT_SIZE = 5;
+constexpr uint8_t STATUS_TEXT_SIZE = 2;
+constexpr uint8_t CODE_TEXT_SIZE = 2;
+
+// Shifted downward to keep the title fully visible and better use the canvas height.
+constexpr int16_t TITLE_Y = 20;
+constexpr int16_t TIMER_Y = 80;
+constexpr int16_t STATUS_Y = 150;
+constexpr int16_t BAR_Y = 185;
+constexpr int16_t BAR_WIDTH = 200;
+constexpr int16_t BAR_HEIGHT = 16;
+constexpr int16_t BAR_BORDER = 2;
+constexpr int16_t CODE_Y = 260;
 
 TFT_eSPI tft = TFT_eSPI();
+bool screenInitialized = false;
+bool layoutDrawn = false;
 
-String formatTimer(uint32_t ms) {
-  const uint32_t totalSeconds = ms / 1000;
-  const uint32_t minutes = totalSeconds / 60;
-  const uint32_t seconds = totalSeconds % 60;
+int16_t barX() { return (tft.width() - BAR_WIDTH) / 2; }
 
-  char buffer[16];
-  snprintf(buffer, sizeof(buffer), "%02u:%02u", static_cast<unsigned>(minutes), static_cast<unsigned>(seconds));
-  return String(buffer);
-}
+void ensureDisplayReady() {
+  if (screenInitialized) {
+    return;
+  }
 
-void drawSplashBase() {
-  tft.fillScreen(BACKGROUND_COLOR);
-  tft.setTextColor(TITLE_COLOR, BACKGROUND_COLOR);
-  tft.setTextSize(2);
-  tft.setTextDatum(TL_DATUM);
-  tft.drawString("Digital Flame", 10, 10);
-  tft.setTextColor(TEXT_COLOR, BACKGROUND_COLOR);
-  tft.drawString("Booting...", 10, 40);
-}
-}
-
-namespace ui {
-void initDisplay() {
   pinMode(BACKLIGHT_PIN, OUTPUT);
   digitalWrite(BACKLIGHT_PIN, HIGH);
 
   tft.init();
-  tft.setRotation(0);  // Rotate display 90 degrees relative to previous orientation - use 0 or 2 for portrait
-
-  drawSplashBase();
-  renderStatus(getState(), false, false, "", WaitingOnStart, 0);
+  tft.setRotation(0);  // Portrait orientation matches the mockup.
+  tft.fillScreen(BACKGROUND_COLOR);
+  tft.setTextColor(FOREGROUND_COLOR, BACKGROUND_COLOR);
+  screenInitialized = true;
 }
 
-void renderStatus(FlameState state, bool wifiConnected, bool wifiError, const String &wifiIp,
-                  MatchStatus matchStatus, uint32_t matchTimerMs) {
-  static bool hasRendered = false;
-  static FlameState lastRenderedState = ON;
-  static bool lastWifiConnected = false;
-  static bool lastWifiError = false;
-  static String lastIp = "";
-  static MatchStatus lastMatchStatus = WaitingOnStart;
-  static uint32_t lastMatchTimerBucket = 0;
-  static String lastStateLine;
-  static String lastWifiLine;
-  static String lastIpLine;
-  static String lastWifiErrorLine;
-  static String lastMatchLine;
-  static String lastTimerLine;
-
-  const uint32_t timerBucket = matchTimerMs / 1000;  // Only update UI when visible seconds change.
-
-  if (hasRendered && state == lastRenderedState && wifiConnected == lastWifiConnected &&
-      wifiError == lastWifiError && wifiIp == lastIp && matchStatus == lastMatchStatus &&
-      timerBucket == lastMatchTimerBucket) {
-    // Avoid unnecessary redraws that can cause visible flicker when nothing changed.
+void drawStaticLayout() {
+  if (layoutDrawn) {
     return;
   }
 
-  // Small status area to show current state without redrawing the whole screen.
-  constexpr int16_t statusY = 60;
-  tft.setTextColor(TEXT_COLOR, BACKGROUND_COLOR);
-  tft.setTextDatum(TL_DATUM);
+  tft.fillScreen(BACKGROUND_COLOR);
 
-  auto updateLine = [&](int16_t y, uint8_t textSize, const String &text, String &lastText) {
-    if (!hasRendered || text != lastText) {
-      const int16_t lineHeight = static_cast<int16_t>(textSize * 12 + 6);
-      tft.setTextSize(textSize);
-      tft.fillRect(0, y, tft.width(), lineHeight, BACKGROUND_COLOR);
-      if (!text.isEmpty()) {
-        tft.drawString(text, 10, y);
-      }
-      lastText = text;
+  // Title
+  tft.setTextDatum(TC_DATUM);
+  tft.setTextSize(TITLE_TEXT_SIZE);
+  tft.drawString("Digital Flame", tft.width() / 2, TITLE_Y);
+
+  // Progress bar outline
+  for (int i = 0; i < BAR_BORDER; ++i) {
+    tft.drawRect(barX() + i, BAR_Y + i, BAR_WIDTH - 2 * i, BAR_HEIGHT - 2 * i, FOREGROUND_COLOR);
+  }
+
+  layoutDrawn = true;
+}
+
+void drawCenteredText(const String &text, int16_t y, uint8_t textSize, int16_t clearHeight) {
+  tft.setTextDatum(TC_DATUM);
+  tft.setTextSize(textSize);
+  const int16_t clearY = y - clearHeight / 2;
+  tft.fillRect(0, clearY, tft.width(), clearHeight, BACKGROUND_COLOR);
+  tft.drawString(text, tft.width() / 2, y);
+}
+}  // namespace
+
+namespace ui {
+void formatTimeMMSS(uint32_t ms, char *buffer, size_t len) {
+  if (len == 0 || buffer == nullptr) {
+    return;
+  }
+
+  const uint32_t totalSeconds = ms / 1000;
+  const uint32_t minutes = totalSeconds / 60;
+  const uint32_t seconds = totalSeconds % 60;
+
+  snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(minutes), static_cast<unsigned>(seconds));
+}
+
+void initMainScreen() {
+  ensureDisplayReady();
+  layoutDrawn = false;  // Force redraw of static layout if called again.
+  drawStaticLayout();
+
+  // Prime dynamic regions to a clean state.
+  drawCenteredText("--:--", TIMER_Y, TIMER_TEXT_SIZE, 48);
+  drawCenteredText("Status:", STATUS_Y, STATUS_TEXT_SIZE, 24);
+
+  // Clear progress fill area.
+  tft.fillRect(barX() + BAR_BORDER, BAR_Y + BAR_BORDER, BAR_WIDTH - 2 * BAR_BORDER,
+               BAR_HEIGHT - 2 * BAR_BORDER, BACKGROUND_COLOR);
+
+  // Clear potential defuse code area.
+  tft.fillRect(0, CODE_Y - 16, tft.width(), 32, BACKGROUND_COLOR);
+}
+
+void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs, float armingProgress01,
+                 uint8_t codeLength, uint8_t /*enteredDigits*/) {
+  ensureDisplayReady();
+  drawStaticLayout();
+
+  static FlameState lastState = ON;
+  static String lastTimerText;
+  static String lastStatusText;
+  static int16_t lastBarFill = -1;
+  static uint8_t lastCodeLength = 0;
+
+  // Timer
+  char timeBuffer[8] = {0};
+  const uint32_t timerSource = (remainingMs == 0) ? bombDurationMs : remainingMs;
+  formatTimeMMSS(timerSource, timeBuffer, sizeof(timeBuffer));
+  const String timerText = String(timeBuffer);
+  if (timerText != lastTimerText) {
+    drawCenteredText(timerText, TIMER_Y, TIMER_TEXT_SIZE, 48);
+    lastTimerText = timerText;
+  }
+
+  // Status line
+  String statusText = "Status: ";
+  statusText += flameStateToString(state);
+  if (statusText != lastStatusText) {
+    drawCenteredText(statusText, STATUS_Y, STATUS_TEXT_SIZE, 24);
+    lastStatusText = statusText;
+  }
+
+  // Progress bar fill (only visible during arming, empty otherwise)
+  const float clampedProgress = (state == ARMING) ? constrain(armingProgress01, 0.0f, 1.0f) : 0.0f;
+  const int16_t innerWidth = BAR_WIDTH - 2 * BAR_BORDER;
+  const int16_t fillWidth = static_cast<int16_t>(innerWidth * clampedProgress);
+  if (fillWidth != lastBarFill) {
+    tft.fillRect(barX() + BAR_BORDER, BAR_Y + BAR_BORDER, innerWidth, BAR_HEIGHT - 2 * BAR_BORDER,
+                 BACKGROUND_COLOR);
+    if (fillWidth > 0) {
+      tft.fillRect(barX() + BAR_BORDER, BAR_Y + BAR_BORDER, fillWidth, BAR_HEIGHT - 2 * BAR_BORDER,
+                   FOREGROUND_COLOR);
     }
-  };
-
-  String stateText = "State: ";
-  stateText += flameStateToString(state);
-  updateLine(statusY + 0, 2, stateText, lastStateLine);
-
-  String wifiText = "WiFi: ";
-  if (wifiConnected) {
-    wifiText += "Connected";
-  } else if (wifiError) {
-    wifiText += "Error";
-  } else {
-    wifiText += "Connecting...";
+    lastBarFill = fillWidth;
   }
-  updateLine(statusY + 30, 2, wifiText, lastWifiLine);
 
-  String ipText;
-  if (wifiConnected) {
-    ipText = "IP: ";
-    ipText += wifiIp;
+  // Defuse code placeholders are only shown when armed.
+  if (state == ARMED) {
+    if (lastState != ARMED || lastCodeLength != codeLength) {
+      tft.fillRect(0, CODE_Y - 16, tft.width(), 32, BACKGROUND_COLOR);
+
+      String placeholders;
+      placeholders.reserve(codeLength * 2);
+      for (uint8_t i = 0; i < codeLength; ++i) {
+        placeholders += "_";
+        if (i < codeLength - 1) {
+          placeholders += " ";
+        }
+      }
+
+      drawCenteredText(placeholders, CODE_Y, CODE_TEXT_SIZE, 24);
+      lastCodeLength = codeLength;
+    }
+  } else if (lastState == ARMED) {
+    // Clear placeholders when leaving ARMED.
+    tft.fillRect(0, CODE_Y - 16, tft.width(), 32, BACKGROUND_COLOR);
+    lastCodeLength = 0;
   }
-  updateLine(statusY + 60, 1, ipText, lastIpLine);
 
-  // Show clear recovery instructions when WiFi failures push us into ERROR_STATE.
-  String wifiErrorText;
-  if (wifiError) {
-    wifiErrorText = "WiFi Error - Hold both buttons to reset";
-  }
-  updateLine(statusY + 80, 1, wifiErrorText, lastWifiErrorLine);
-
-  String matchText = "Match: ";
-  matchText += matchStatusToString(matchStatus);
-  updateLine(statusY + 110, 2, matchText, lastMatchLine);
-
-  String timerText = "Timer: ";
-  timerText += formatTimer(timerBucket * 1000);
-  updateLine(statusY + 140, 2, timerText, lastTimerLine);
-
-  hasRendered = true;
-  lastRenderedState = state;
-  lastWifiConnected = wifiConnected;
-  lastWifiError = wifiError;
-  lastIp = wifiIp;
-  lastMatchStatus = matchStatus;
-  lastMatchTimerBucket = timerBucket;
+  lastState = state;
 }
 
 void initUI() {
