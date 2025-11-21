@@ -1,6 +1,8 @@
 #pragma once
 
 // Stub input module for keypad and buttons.
+#include <Arduino.h>
+
 void initInputs();
 void updateInputs();
 
