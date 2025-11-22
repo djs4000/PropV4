@@ -4,17 +4,13 @@
 
 // Default gameplay configuration. Values are applied on first boot and can be
 // overridden by persisted Preferences values. These defaults follow agents.md.
-#ifdef DEBUG
-constexpr uint32_t API_POST_INTERVAL_MS = 5000;      // 5s for testing
-#else
-constexpr uint32_t API_POST_INTERVAL_MS = 500;      // 500ms for live
-#endif
-constexpr uint32_t API_TIMEOUT_MS = 10000;           // 10s
-constexpr uint32_t BUTTON_HOLD_MS = 3000;            // 3s for arming/reset
-constexpr uint8_t DEFUSE_CODE_LENGTH = 4;            // digits
-constexpr uint8_t MAX_WIFI_RETRIES = 10;             // WiFi attempts
-
-constexpr uint32_t DEFAULT_BOMB_DURATION_MS = 40000; // example: 40s
+constexpr uint32_t API_POST_INTERVAL_MS = 500;
+constexpr uint32_t API_TIMEOUT_MS = 10000;
+constexpr uint32_t BUTTON_HOLD_MS = 3000;
+constexpr uint32_t IR_CONFIRM_WINDOW_MS = 2000;
+constexpr uint8_t DEFUSE_CODE_LENGTH = 4;
+constexpr uint8_t MAX_WIFI_RETRIES = 10;
+constexpr uint32_t DEFAULT_BOMB_DURATION_MS = 40000;
 
 // Placeholder default defuse code used until Preferences or web UI override it.
 static constexpr const char *DEFAULT_DEFUSE_CODE = "1234";
@@ -29,11 +25,11 @@ static constexpr const char *SOFTAP_SSID_PREFIX = "DigitalFlame-";
 static constexpr const char *SOFTAP_PASSWORD = "digitalflame";
 
 // Controls how the device interacts with the backend API. Additional configurability
-// will be added later; for now the mode is fixed to TestSendOnly.
+// will be added later; for now the mode is fixed to full online mode.
 enum class ApiMode {
-  Disabled,      // no HTTP calls, maybe just log JSON
-  TestSendOnly,  // send POST, ignore response and never trigger errors
-  FullOnline     // send POST, parse response, enforce timeout rules
+  Disabled,
+  TestSendOnly,
+  FullOnline
 };
 
 inline ApiMode getApiMode() { return ApiMode::FullOnline; }

@@ -28,4 +28,16 @@ bool parseMatchStatus(const char *statusStr, MatchStatus &outStatus) {
   return true;
 }
 
+void formatTimeMMSS(uint32_t ms, char *buffer, size_t len) {
+  if (buffer == nullptr || len == 0) {
+    return;
+  }
+  const uint32_t totalSeconds = ms / 1000;
+  const uint32_t minutes = totalSeconds / 60;
+  const uint32_t seconds = totalSeconds % 60;
+  snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(minutes),
+           static_cast<unsigned>(seconds));
+}
+
 }  // namespace util
+

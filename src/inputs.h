@@ -1,10 +1,19 @@
 #pragma once
 
-// Stub input module for keypad and buttons.
 #include <Arduino.h>
 
-void initInputs();
-void updateInputs();
+namespace inputs {
+void init();
+void update();
 
-// Helper for UI to know how many defuse digits are currently buffered.
-uint8_t getEnteredDigits();
+bool isArmingGestureActive();
+float getArmingProgress01();
+bool consumeArmingHoldComplete();
+
+bool consumeIrConfirmation();
+
+const char *getDefuseBuffer();
+uint8_t getDefuseLength();
+void clearDefuseBuffer();
+}  // namespace inputs
+

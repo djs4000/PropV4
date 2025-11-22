@@ -2,107 +2,115 @@
 
 #include <Adafruit_NeoPixel.h>
 
+#include "game_config.h"
+
 namespace {
 constexpr uint8_t LED_PIN = 19;
 constexpr uint16_t LED_COUNT = 128;
 constexpr uint8_t LED_BRIGHTNESS = 64;
-constexpr uint32_t STARTUP_TEST_DURATION_MS = 1000;
-constexpr uint8_t AMP_ENABLE_PIN = 4;     // LOW = enable
-constexpr uint8_t AUDIO_PIN = 26;          // DAC output
+constexpr uint8_t AMP_ENABLE_PIN = 4;  // LOW = enable
+constexpr uint8_t AUDIO_PIN = 26;       // DAC output
 constexpr uint8_t BEEP_CHANNEL = 0;
-constexpr uint32_t BEEP_FREQUENCY_HZ = 2000;
-constexpr uint8_t BEEP_DUTY = 180;
-constexpr uint32_t STARTUP_BEEP_DURATION_MS = 200;
+
+constexpr uint32_t CLICK_DURATION_MS = 50;
+constexpr uint32_t STATE_TONE_DURATION_MS = 150;
 
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
-bool startupTestActive = false;
-bool startupTestComplete = false;
-unsigned long startupTestStartMs = 0;
-
-bool startupBeepActive = false;
-bool startupBeepComplete = false;
-unsigned long startupBeepStartMs = 0;
+FlameState lastState = ON;
 bool ledcConfigured = false;
+uint32_t toneEndMs = 0;
 
-void beginTone() {
-  if (!ledcConfigured) {
-    ledcSetup(BEEP_CHANNEL, BEEP_FREQUENCY_HZ, 8);
-    ledcAttachPin(AUDIO_PIN, BEEP_CHANNEL);
-    ledcConfigured = true;
+uint32_t clickEndMs = 0;
+
+uint32_t colorForState(FlameState state) {
+  switch (state) {
+    case READY:
+      return strip.Color(0, 32, 0);
+    case ACTIVE:
+      return strip.Color(255, 64, 0);
+    case ARMING:
+      return strip.Color(255, 180, 0);
+    case ARMED:
+      return strip.Color(255, 0, 0);
+    case DEFUSED:
+      return strip.Color(0, 0, 255);
+    case DETONATED:
+      return strip.Color(255, 0, 255);
+    case ERROR_STATE:
+      return strip.Color(255, 0, 0);
+    case ON:
+    default:
+      return strip.Color(8, 8, 8);
   }
-  ledcWrite(BEEP_CHANNEL, BEEP_DUTY);
 }
 
-void endTone() { ledcWrite(BEEP_CHANNEL, 0); }
+void fillStrip(uint32_t color) {
+  for (uint16_t i = 0; i < LED_COUNT; ++i) {
+    strip.setPixelColor(i, color);
+  }
+  strip.show();
+}
+
+void ensureToneSetup() {
+  if (ledcConfigured) {
+    return;
+  }
+  ledcSetup(BEEP_CHANNEL, 2000, 8);
+  ledcAttachPin(AUDIO_PIN, BEEP_CHANNEL);
+  ledcConfigured = true;
+}
+
+void startTone(uint16_t frequency, uint32_t durationMs) {
+  ensureToneSetup();
+  digitalWrite(AMP_ENABLE_PIN, LOW);
+  ledcWriteTone(BEEP_CHANNEL, frequency);
+  toneEndMs = millis() + durationMs;
+}
+
+void stopTone() {
+  ledcWriteTone(BEEP_CHANNEL, 0);
+  digitalWrite(AMP_ENABLE_PIN, HIGH);
+  toneEndMs = 0;
+}
 }
 
 namespace effects {
-void initEffects() {
-  // Initialize LED strip
+void init() {
   strip.begin();
   strip.setBrightness(LED_BRIGHTNESS);
   strip.clear();
   strip.show();
 
-  // Configure amplifier control
   pinMode(AMP_ENABLE_PIN, OUTPUT);
-  digitalWrite(AMP_ENABLE_PIN, HIGH);  // Disable amp until needed
+  digitalWrite(AMP_ENABLE_PIN, HIGH);
 }
 
-void startStartupTest() {
-  // Simple LED self-check: turn all LEDs on, then off after a short duration.
-  startupTestActive = true;
-  startupTestComplete = false;
-  startupTestStartMs = millis();
+void update() {
+  const uint32_t now = millis();
 
-  for (uint16_t i = 0; i < LED_COUNT; ++i) {
-    strip.setPixelColor(i, strip.Color(255, 150, 0));  // Warm orange to mimic flame
+  if (toneEndMs != 0 && now >= toneEndMs) {
+    stopTone();
   }
-  strip.show();
+
+  if (clickEndMs != 0 && now >= clickEndMs) {
+    stopTone();
+    clickEndMs = 0;
+  }
 }
 
-void updateStartupTest() {
-  if (!startupTestActive || startupTestComplete) {
+void onStateChanged(FlameState state) {
+  if (state == lastState) {
     return;
   }
-
-  const unsigned long now = millis();
-  if (now - startupTestStartMs >= STARTUP_TEST_DURATION_MS) {
-    strip.clear();
-    strip.show();
-    startupTestActive = false;
-    startupTestComplete = true;
-  }
+  lastState = state;
+  fillStrip(colorForState(state));
+  startTone(1200, STATE_TONE_DURATION_MS);
 }
 
-void startStartupBeep() {
-  startupBeepActive = true;
-  startupBeepComplete = false;
-  startupBeepStartMs = millis();
-
-  // Enable the amplifier and start tone playback.
-  digitalWrite(AMP_ENABLE_PIN, LOW);
-  beginTone();
-}
-
-void updateStartupBeep() {
-  if (!startupBeepActive || startupBeepComplete) {
-    return;
-  }
-
-  const unsigned long now = millis();
-  if (now - startupBeepStartMs >= STARTUP_BEEP_DURATION_MS) {
-    endTone();
-    digitalWrite(AMP_ENABLE_PIN, HIGH);  // Disable amp after the beep
-    startupBeepActive = false;
-    startupBeepComplete = true;
-  }
-}
-
-void updateEffects() {
-  // Run startup self-checks; future animations will also update here.
-  updateStartupTest();
-  updateStartupBeep();
+void playKeypadClick() {
+  startTone(1800, CLICK_DURATION_MS);
+  clickEndMs = millis() + CLICK_DURATION_MS;
 }
 }  // namespace effects
+

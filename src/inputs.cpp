@@ -1,39 +1,40 @@
 #include "inputs.h"
 
+#include <IRremote.hpp>
 #include <Wire.h>
 #include <cstring>
 
+#include "effects.h"
 #include "game_config.h"
-#include "network.h"
-#include "state_machine.h"
 
 namespace {
-constexpr uint8_t KEYPAD_ADDR = 0x20;   // PCF8574 for 4x4 keypad
-constexpr uint8_t BUTTON_ADDR = 0x21;   // PCF8574 for dual buttons
+constexpr uint8_t KEYPAD_ADDR = 0x20;
+constexpr uint8_t BUTTON_ADDR = 0x21;
 constexpr uint8_t I2C_SDA = 23;
 constexpr uint8_t I2C_SCL = 18;
-constexpr uint32_t I2C_FREQ = 100000;   // 100kHz per agents.md
-
+constexpr uint32_t I2C_FREQ = 100000;
 constexpr uint32_t KEY_DEBOUNCE_MS = 50;
 constexpr uint32_t BUTTON_DEBOUNCE_MS = 30;
 
-// Key map matches a standard 4x4 matrix; only numeric keys are acted upon.
 constexpr char KEY_MAP[4][4] = {{'1', '2', '3', 'A'},
                                 {'4', '5', '6', 'B'},
                                 {'7', '8', '9', 'C'},
                                 {'*', '0', '#', 'D'}};
 
 char defuseBuffer[DEFUSE_CODE_LENGTH + 1] = {0};
-uint8_t enteredDigits = 0;
-FlameState lastState = ON;
+uint8_t defuseLength = 0;
 
 bool lastButtonsRaw = false;
 bool debouncedButtons = false;
 uint32_t buttonsChangeMs = 0;
+bool holdCompleteFlag = false;
+uint32_t holdStartMs = 0;
 
 char lastKeyRaw = '\0';
 char debouncedKey = '\0';
 uint32_t keyChangeMs = 0;
+
+bool irConfirmFlag = false;
 
 bool writePcf(uint8_t addr, uint8_t value) {
   Wire.beginTransmission(addr);
@@ -49,28 +50,25 @@ bool readPcf(uint8_t addr, uint8_t &value) {
   return true;
 }
 
-void resetDefuseBuffer() {
+void resetDefuseBufferInternal() {
   memset(defuseBuffer, 0, sizeof(defuseBuffer));
-  enteredDigits = 0;
+  defuseLength = 0;
 }
 
 bool areBothButtonsPressedRaw() {
-  uint8_t value = 0;
+  uint8_t value = 0xFF;
   if (!readPcf(BUTTON_ADDR, value)) {
     return false;
   }
-
-  const bool buttonA = (value & (1 << 0)) == 0;  // Active low
-  const bool buttonB = (value & (1 << 1)) == 0;  // Active low
+  const bool buttonA = (value & (1 << 0)) == 0;
+  const bool buttonB = (value & (1 << 1)) == 0;
   return buttonA && buttonB;
 }
 
 char scanKeypadRaw() {
-  // Drive one column low at a time and read the rows.
   for (uint8_t col = 0; col < 4; ++col) {
     uint8_t mask = 0xFF;
-    mask &= static_cast<uint8_t>(~(1 << (4 + col)));  // Pull selected column low
-
+    mask &= static_cast<uint8_t>(~(1 << (4 + col)));
     if (!writePcf(KEYPAD_ADDR, mask)) {
       continue;
     }
@@ -81,103 +79,111 @@ char scanKeypadRaw() {
     }
 
     for (uint8_t row = 0; row < 4; ++row) {
-      if ((state & (1 << row)) == 0) {  // Active low row indicates press
-        // Restore idle high state before returning.
+      if ((state & (1 << row)) == 0) {
         writePcf(KEYPAD_ADDR, 0xFF);
         return KEY_MAP[row][col];
       }
     }
   }
-
-  // Release all lines high when no key is detected.
   writePcf(KEYPAD_ADDR, 0xFF);
   return '\0';
 }
 
-void handleDigitPress(char digit) {
-  const FlameState state = getState();
-  if (state != ARMED) {
-    resetDefuseBuffer();
+void handleDigit(char digit) {
+  if (digit < '0' || digit > '9') {
     return;
   }
 
-  if (enteredDigits < DEFUSE_CODE_LENGTH) {
-    defuseBuffer[enteredDigits++] = digit;
-    defuseBuffer[enteredDigits] = '\0';
-  }
-
-  if (enteredDigits >= DEFUSE_CODE_LENGTH) {
-    const String &configured = network::getConfiguredDefuseCode();
-    const bool matches = configured.length() == DEFUSE_CODE_LENGTH && configured.equals(defuseBuffer);
-
-    if (matches) {
-      setState(DEFUSED);
-    } else {
-      // TODO: play a short error tone via effects module.
-    }
-
-    resetDefuseBuffer();
+  if (defuseLength < DEFUSE_CODE_LENGTH) {
+    defuseBuffer[defuseLength++] = digit;
+    defuseBuffer[defuseLength] = '\0';
   }
 }
 }  // namespace
 
-void initInputs() {
+namespace inputs {
+void init() {
   Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ);
-
-  // Default all PCF8574 pins high so rows/columns float and buttons read as idle.
   writePcf(KEYPAD_ADDR, 0xFF);
   writePcf(BUTTON_ADDR, 0xFF);
+  resetDefuseBufferInternal();
 
-  resetDefuseBuffer();
+  IrReceiver.begin(27, ENABLE_LED_FEEDBACK);
 }
 
-void updateInputs() {
+void update() {
   const uint32_t now = millis();
-  const FlameState state = getState();
 
-  if (state != lastState) {
-    resetDefuseBuffer();
-    lastState = state;
+  if (IrReceiver.decode()) {
+    irConfirmFlag = true;
+    IrReceiver.resume();
   }
 
-  // Debounce both-button hold detection for ARMING/ERROR reset.
   const bool rawButtonsPressed = areBothButtonsPressedRaw();
   if (rawButtonsPressed != lastButtonsRaw) {
     buttonsChangeMs = now;
     lastButtonsRaw = rawButtonsPressed;
   }
-
   if (now - buttonsChangeMs >= BUTTON_DEBOUNCE_MS && debouncedButtons != rawButtonsPressed) {
     debouncedButtons = rawButtonsPressed;
-#ifdef DEBUG
-    Serial.println(debouncedButtons ? "BUTTONS: both pressed" : "BUTTONS: released");
-#endif
     if (debouncedButtons) {
-      startButtonHold();
+      holdStartMs = now;
+      holdCompleteFlag = false;
     } else {
-      stopButtonHold();
+      holdStartMs = 0;
     }
   }
 
-  // Debounce keypad entries to build the defuse code buffer.
+  if (debouncedButtons && !holdCompleteFlag && now - holdStartMs >= BUTTON_HOLD_MS) {
+    holdCompleteFlag = true;
+  }
+
   const char rawKey = scanKeypadRaw();
   if (rawKey != lastKeyRaw) {
     keyChangeMs = now;
     lastKeyRaw = rawKey;
   }
-
   if (now - keyChangeMs >= KEY_DEBOUNCE_MS && debouncedKey != rawKey) {
     debouncedKey = rawKey;
-#ifdef DEBUG
     if (debouncedKey != '\0') {
-      Serial.print("KEYPAD: ");
-      Serial.println(debouncedKey);
-    }
-#endif
-    if (debouncedKey >= '0' && debouncedKey <= '9') {
-      handleDigitPress(debouncedKey);
+      handleDigit(debouncedKey);
+      effects::playKeypadClick();
     }
   }
 }
 
-uint8_t getEnteredDigits() { return enteredDigits; }
+bool isArmingGestureActive() { return debouncedButtons; }
+
+float getArmingProgress01() {
+  if (!debouncedButtons || holdStartMs == 0) {
+    return 0.0f;
+  }
+  const uint32_t now = millis();
+  const float progress = static_cast<float>(now - holdStartMs) /
+                         static_cast<float>(BUTTON_HOLD_MS);
+  return progress > 1.0f ? 1.0f : progress;
+}
+
+bool consumeArmingHoldComplete() {
+  if (holdCompleteFlag) {
+    holdCompleteFlag = false;
+    return true;
+  }
+  return false;
+}
+
+bool consumeIrConfirmation() {
+  if (irConfirmFlag) {
+    irConfirmFlag = false;
+    return true;
+  }
+  return false;
+}
+
+const char *getDefuseBuffer() { return defuseBuffer; }
+
+uint8_t getDefuseLength() { return defuseLength; }
+
+void clearDefuseBuffer() { resetDefuseBufferInternal(); }
+}  // namespace inputs
+

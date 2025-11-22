@@ -33,16 +33,10 @@ void updateState();
 void setMatchStatus(MatchStatus status);
 MatchStatus getMatchStatus();
 
-// Timer helpers for ARMED countdown (placeholder for later implementation)
-void setArmedTimerMs(uint32_t remainingMs);
-uint32_t getArmedTimerMs();
-
-// Button hold helpers (driven by inputs module)
-void startButtonHold();
-void stopButtonHold();
-bool isButtonHoldActive();
-uint32_t getButtonHoldStartMs();
+// IR confirmation helper for UI rendering
+bool isIrConfirmWindowActive();
 
 // Utility conversion helpers
 const char *flameStateToString(FlameState state);
 const char *matchStatusToString(MatchStatus status);
+

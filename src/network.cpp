@@ -9,11 +9,11 @@
 #include <HTTPClient.h>
 #include <Preferences.h>
 #include <WebServer.h>
+#include <WiFi.h>
+#include <esp_timer.h>
 
 namespace network {
-
-// Internal state cached for network interactions. Variables are file-local via
-// `static` to avoid exposing them outside this translation unit.
+namespace {
 struct RuntimeConfig {
   String wifiSsid;
   String wifiPass;
@@ -22,45 +22,36 @@ struct RuntimeConfig {
   String apiEndpoint;
 };
 
-static RuntimeConfig runtimeConfig = {String(DEFAULT_WIFI_SSID), String(DEFAULT_WIFI_PASS),
-                                      String(DEFAULT_DEFUSE_CODE), DEFAULT_BOMB_DURATION_MS,
-                                      String(DEFAULT_API_ENDPOINT)};
+RuntimeConfig runtimeConfig{String(DEFAULT_WIFI_SSID), String(DEFAULT_WIFI_PASS),
+                            String(DEFAULT_DEFUSE_CODE), DEFAULT_BOMB_DURATION_MS,
+                            String(DEFAULT_API_ENDPOINT)};
 
-static uint64_t lastSuccessfulApiMs = 0;
-static MatchStatus remoteStatus = WaitingOnStart;
-static FlameState outboundState = ON;
-static uint32_t outboundTimerMs = DEFAULT_BOMB_DURATION_MS;
-static uint32_t baseRemainingTimeMs = 0;
-static uint64_t baseRemainingTimestampMs = 0;
-static uint64_t lastApiResponseMs = 0;
-static bool apiResponseReceived = false;
+uint64_t lastSuccessfulApiMs = 0;
+uint64_t lastApiPostMs = 0;
+MatchStatus remoteStatus = WaitingOnStart;
+bool apiResponseReceived = false;
 
-// Tracks the last POST attempt to maintain the configured cadence.
-static uint32_t lastApiPostMs = 0;
+uint8_t wifiRetryCount = 0;
+uint32_t wifiAttemptStartMs = 0;
+bool wifiFailedPermanently = false;
 
-static uint8_t wifiRetryCount = 0;
-static uint32_t wifiAttemptStartMs = 0;
-static bool wifiFailedPermanently = false;
+Preferences preferences;
+bool preferencesInitialized = false;
 
-static Preferences preferences;
-static bool preferencesInitialized = false;
+WebServer server(80);
+bool configPortalActive = false;
+bool configPortalReconnectRequested = false;
+String configPortalSsid;
+bool webServerRunning = false;
+bool webServerRoutesConfigured = false;
 
-static WebServer server(80);
-static bool configPortalActive = false;
-static bool configPortalReconnectRequested = false;
-static String configPortalSsid;
-static bool webServerRunning = false;
-static bool webServerRoutesConfigured = false;
+constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 5000;
 
-// Timeout for each WiFi connection attempt before retrying.
-static constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 5000;
+void configureRoutes();
+void handleConfigPortalGet();
+void handleConfigPortalSave();
 
-// Forward declarations for config portal route handlers to ensure registration
-// compiles before definitions later in the file.
-static void handleConfigPortalGet();
-static void handleConfigPortalSave();
-
-static Preferences &getPreferences() {
+Preferences &getPreferences() {
   if (!preferencesInitialized) {
     preferences.begin("digital_flame", false);
     preferencesInitialized = true;
@@ -68,7 +59,7 @@ static Preferences &getPreferences() {
   return preferences;
 }
 
-static void loadRuntimeConfigFromPrefs() {
+void loadRuntimeConfig() {
   Preferences &prefs = getPreferences();
   runtimeConfig.wifiSsid = prefs.getString("wifi_ssid", DEFAULT_WIFI_SSID);
   runtimeConfig.wifiPass = prefs.getString("wifi_pass", DEFAULT_WIFI_PASS);
@@ -76,21 +67,13 @@ static void loadRuntimeConfigFromPrefs() {
   runtimeConfig.apiEndpoint = prefs.getString("api_endpoint", DEFAULT_API_ENDPOINT);
   runtimeConfig.bombDurationMs = prefs.getUInt("bomb_duration_ms", DEFAULT_BOMB_DURATION_MS);
 
-  if (runtimeConfig.wifiSsid.isEmpty()) {
-    runtimeConfig.wifiSsid = DEFAULT_WIFI_SSID;
-  }
-  if (runtimeConfig.apiEndpoint.isEmpty()) {
-    runtimeConfig.apiEndpoint = DEFAULT_API_ENDPOINT;
-  }
-  if (runtimeConfig.defuseCode.isEmpty()) {
-    runtimeConfig.defuseCode = DEFAULT_DEFUSE_CODE;
-  }
-  if (runtimeConfig.bombDurationMs == 0) {
-    runtimeConfig.bombDurationMs = DEFAULT_BOMB_DURATION_MS;
-  }
+  if (runtimeConfig.wifiSsid.isEmpty()) runtimeConfig.wifiSsid = DEFAULT_WIFI_SSID;
+  if (runtimeConfig.apiEndpoint.isEmpty()) runtimeConfig.apiEndpoint = DEFAULT_API_ENDPOINT;
+  if (runtimeConfig.defuseCode.isEmpty()) runtimeConfig.defuseCode = DEFAULT_DEFUSE_CODE;
+  if (runtimeConfig.bombDurationMs == 0) runtimeConfig.bombDurationMs = DEFAULT_BOMB_DURATION_MS;
 }
 
-static void persistRuntimeConfig() {
+void persistRuntimeConfig() {
   Preferences &prefs = getPreferences();
   prefs.putString("wifi_ssid", runtimeConfig.wifiSsid);
   prefs.putString("wifi_pass", runtimeConfig.wifiPass);
@@ -99,47 +82,42 @@ static void persistRuntimeConfig() {
   prefs.putString("api_endpoint", runtimeConfig.apiEndpoint);
 }
 
-static void configureWebServerRoutes() {
+void configureRoutes() {
   if (webServerRoutesConfigured) {
     return;
   }
   server.on("/", HTTP_GET, handleConfigPortalGet);
   server.on("/save", HTTP_POST, handleConfigPortalSave);
   server.onNotFound([]() { server.send(404, "text/plain", "Not found"); });
-
   webServerRoutesConfigured = true;
 }
 
-static void startWebServerIfNeeded() {
-  configureWebServerRoutes();
+void startWebServerIfNeeded() {
+  configureRoutes();
   if (webServerRunning) {
     return;
   }
-
   server.begin();
   webServerRunning = true;
 }
 
-// Starts a single WiFi attempt without blocking the main loop.
-static void startWifiAttempt() {
+void startWifiAttempt() {
   wifiAttemptStartMs = millis();
   WiFi.mode(WIFI_STA);
   WiFi.disconnect(true);
   WiFi.begin(runtimeConfig.wifiSsid.c_str(), runtimeConfig.wifiPass.c_str());
 #ifdef DEBUG
-  Serial.print("WiFi attempt ");
+  Serial.print("NET: WiFi attempt ");
   Serial.print(static_cast<int>(wifiRetryCount + 1));
-  Serial.print("/ ");
+  Serial.print("/");
   Serial.println(static_cast<int>(MAX_WIFI_RETRIES));
-  Serial.print("SSID: ");
-  Serial.println(runtimeConfig.wifiSsid);
 #endif
 }
 
-static void handleConfigPortalGet() {
+void handleConfigPortalGet() {
   String page;
   page.reserve(1024);
-  page += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Digital Flame Config</title></head><body>";
+  page += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Digital Flame</title></head><body>";
   page += "<h2>Digital Flame Configuration</h2>";
   page += "<form action=\"/save\" method=\"POST\">";
   page += "<label>WiFi SSID: <input type=\"text\" name=\"wifi_ssid\" value=\"" + runtimeConfig.wifiSsid + "\"></label><br><br>";
@@ -149,13 +127,11 @@ static void handleConfigPortalGet() {
           String(runtimeConfig.bombDurationMs) + "\"></label><br><br>";
   page += "<label>API Endpoint: <input type=\"text\" name=\"api_endpoint\" value=\"" + runtimeConfig.apiEndpoint +
           "\"></label><br><br>";
-  page += "<button type=\"submit\">Save</button>";
-  page += "</form></body></html>";
-
+  page += "<button type=\"submit\">Save</button></form></body></html>";
   server.send(200, "text/html", page);
 }
 
-static void handleConfigPortalSave() {
+void handleConfigPortalSave() {
   const String ssid = server.arg("wifi_ssid");
   const String pass = server.arg("wifi_pass");
   const String defuse = server.arg("defuse_code");
@@ -176,43 +152,61 @@ static void handleConfigPortalSave() {
   persistRuntimeConfig();
 
   server.send(200, "text/html",
-              "<html><body><h3>Settings saved.</h3><p>Device will reconnect using the new settings." \
-              "</p></body></html>");
+              "<html><body><h3>Settings saved.</h3><p>Reconnecting with new settings.</p></body></html>");
 
   configPortalReconnectRequested = true;
 }
 
-const String &getConfiguredWifiSsid() { return runtimeConfig.wifiSsid; }
-const String &getConfiguredApiEndpoint() { return runtimeConfig.apiEndpoint; }
-const String &getConfiguredDefuseCode() { return runtimeConfig.defuseCode; }
-uint32_t getConfiguredBombDurationMs() { return runtimeConfig.bombDurationMs; }
+void beginConfigPortal() {
+  if (configPortalActive) {
+    return;
+  }
+
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_AP);
+
+  uint8_t mac[6] = {0};
+  WiFi.macAddress(mac);
+  char suffix[5] = {0};
+  snprintf(suffix, sizeof(suffix), "%02X%02X", mac[4], mac[5]);
+  configPortalSsid = String(SOFTAP_SSID_PREFIX) + String(suffix);
+
+  WiFi.softAP(configPortalSsid.c_str(), SOFTAP_PASSWORD);
+  startWebServerIfNeeded();
+
+  configPortalActive = true;
+  wifiFailedPermanently = false;
+#ifdef DEBUG
+  Serial.print("NET: Config portal SSID ");
+  Serial.print(configPortalSsid);
+  Serial.print(" pass ");
+  Serial.println(SOFTAP_PASSWORD);
+#endif
+}
+}
 
 void beginWifi() {
-  loadRuntimeConfigFromPrefs();
+  loadRuntimeConfig();
   wifiRetryCount = 0;
   wifiFailedPermanently = false;
   configPortalActive = false;
   configPortalReconnectRequested = false;
   webServerRunning = false;
   webServerRoutesConfigured = false;
-  lastSuccessfulApiMs = millis();  // Prevent false timeouts before first API call.
+  lastSuccessfulApiMs = 0;
   startWifiAttempt();
 }
 
 void updateWifi() {
   if (configPortalActive) {
-    return;  // SoftAP config portal owns the radio while active.
+    return;
   }
 
   if (wifiFailedPermanently) {
     return;
   }
 
-  // Successful connection ends the retry loop; keep timestamp fresh for timeout logic.
   if (WiFi.status() == WL_CONNECTED) {
-    lastSuccessfulApiMs = millis();
-
-    // Ensure the configuration web server is available on the LAN even when STA connects.
     startWebServerIfNeeded();
     return;
   }
@@ -226,14 +220,10 @@ void updateWifi() {
   wifiRetryCount++;
   if (wifiRetryCount >= MAX_WIFI_RETRIES) {
     wifiFailedPermanently = true;
-#ifdef DEBUG
-    Serial.println("WiFi failed after max retries - starting config portal");
-#endif
     beginConfigPortal();
     return;
   }
 
-  // Retry with a new non-blocking attempt.
   startWifiAttempt();
 }
 
@@ -242,6 +232,11 @@ bool isWifiConnected() { return WiFi.status() == WL_CONNECTED; }
 bool hasWifiFailedPermanently() { return wifiFailedPermanently && !configPortalActive; }
 
 bool isConfigPortalActive() { return configPortalActive; }
+
+const String &getConfiguredWifiSsid() { return runtimeConfig.wifiSsid; }
+const String &getConfiguredDefuseCode() { return runtimeConfig.defuseCode; }
+const String &getConfiguredApiEndpoint() { return runtimeConfig.apiEndpoint; }
+uint32_t getConfiguredBombDurationMs() { return runtimeConfig.bombDurationMs; }
 
 String getConfigPortalSsid() { return configPortalSsid; }
 
@@ -254,7 +249,6 @@ String getConfigPortalAddress() {
   if (isWifiConnected()) {
     return String("http://") + WiFi.localIP().toString();
   }
-  // Default SoftAP IP for user guidance when the portal is starting up.
   return String("http://192.168.4.1");
 }
 
@@ -269,163 +263,57 @@ uint64_t getLastSuccessfulApiMs() { return lastSuccessfulApiMs; }
 
 MatchStatus getRemoteMatchStatus() { return remoteStatus; }
 
-uint32_t getRemoteRemainingTimeMs() {
-  if (!apiResponseReceived) {
-    return 0;
-  }
-
-  const uint64_t now = millis();
-  const uint64_t elapsed = now - baseRemainingTimestampMs;
-  if (elapsed >= baseRemainingTimeMs) {
-    return 0;
-  }
-
-  return static_cast<uint32_t>(baseRemainingTimeMs - elapsed);
-}
-
 bool hasReceivedApiResponse() { return apiResponseReceived; }
 
-void setOutboundStatus(FlameState state, uint32_t timerMs) {
-  outboundState = state;
-  outboundTimerMs = timerMs;
+bool isNetworkWarningActive() {
+  const uint64_t now = millis();
+  return isWifiConnected() && apiResponseReceived && (now - lastSuccessfulApiMs > API_POST_INTERVAL_MS * 3);
 }
 
 void updateApi() {
   const uint32_t now = millis();
+  if (!isWifiConnected() || configPortalActive) {
+    return;
+  }
   if (now - lastApiPostMs < API_POST_INTERVAL_MS) {
     return;
   }
   lastApiPostMs = now;
 
-  // Keep outbound state/timer in sync with the current state machine status.
-  outboundState = getState();
-
   DynamicJsonDocument doc(128);
-  doc["state"] = flameStateToString(outboundState);
-  doc["timer"] = outboundTimerMs;  // Placeholder until real timers are wired up.
-  doc["timestamp"] = 0;           // Placeholder; real clock will be integrated later.
+  doc["state"] = flameStateToString(getState());
+  doc["timer"] = 0;
+  doc["timestamp"] = esp_timer_get_time();
 
   String payload;
   serializeJson(doc, payload);
 
-  const ApiMode mode = getApiMode();
-
-  if (mode == ApiMode::Disabled) {
-#ifdef DEBUG
-    Serial.print("API disabled; payload: ");
-    Serial.println(payload);
-#endif
-    // Prevent timeout triggers while intentionally offline.
-    lastSuccessfulApiMs = now;
-    return;
-  }
-
-  if (!isWifiConnected()) {
-    return;
-  }
-
   HTTPClient http;
   if (!http.begin(runtimeConfig.apiEndpoint)) {
 #ifdef DEBUG
-    Serial.println("HTTP begin failed for API endpoint");
+    Serial.println("NET: HTTP begin failed");
 #endif
-    if (mode == ApiMode::TestSendOnly) {
-      lastSuccessfulApiMs = now;
-    }
     return;
   }
 
   http.addHeader("Content-Type", "application/json");
   const int httpCode = http.POST(payload);
 
-  if (mode == ApiMode::TestSendOnly) {
-    if (httpCode != HTTP_CODE_OK) {
-#ifdef DEBUG
-      Serial.print("API POST failed (test mode): ");
-      Serial.println(httpCode);
-#endif
-    }
-    // Keep timeout logic from firing in this mode regardless of response.
-    lastSuccessfulApiMs = now;
-    http.end();
-    return;
-  }
-
-  // FullOnline mode: enforce strict success + JSON parsing.
   if (httpCode == HTTP_CODE_OK) {
     const String response = http.getString();
     DynamicJsonDocument respDoc(256);
-    const DeserializationError err = deserializeJson(respDoc, response);
-    if (!err) {
+    if (deserializeJson(respDoc, response) == DeserializationError::Ok) {
       const char *statusStr = respDoc["status"];
       MatchStatus parsedStatus;
-      const bool statusParsed = util::parseMatchStatus(statusStr, parsedStatus);
-
-      const uint32_t remainingMs = respDoc["remaining_time_ms"] | 0;
-      baseRemainingTimeMs = remainingMs;
-      baseRemainingTimestampMs = now;
-      lastApiResponseMs = now;
-      apiResponseReceived = true;
-
-      if (statusParsed) {
+      if (util::parseMatchStatus(statusStr, parsedStatus)) {
         remoteStatus = parsedStatus;
+        apiResponseReceived = true;
+        lastSuccessfulApiMs = now;
       }
-
-      // Treat a well-formed JSON body as a successful API interaction for timeout tracking.
-      lastSuccessfulApiMs = now;
-
-#ifdef DEBUG
-      Serial.print("API status: ");
-      Serial.print(statusStr ? statusStr : "<null>");
-      Serial.print(" remaining_ms=");
-      Serial.println(remainingMs);
-#endif
-    } else {
-#ifdef DEBUG
-      Serial.print("API JSON parse error: ");
-      Serial.println(err.f_str());
-#endif
     }
-  } else {
-#ifdef DEBUG
-    Serial.print("API POST failed: ");
-    Serial.println(httpCode);
-#endif
   }
 
   http.end();
-}
-
-void beginConfigPortal() {
-  if (configPortalActive) {
-    return;
-  }
-
-  // Stop any ongoing STA attempts and start the SoftAP.
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_AP);
-
-  uint8_t mac[6] = {0};
-  WiFi.macAddress(mac);
-  char suffix[5] = {0};
-  snprintf(suffix, sizeof(suffix), "%02X%02X", mac[4], mac[5]);
-  configPortalSsid = String(SOFTAP_SSID_PREFIX) + String(suffix);
-
-  WiFi.softAP(configPortalSsid.c_str(), SOFTAP_PASSWORD);
-  startWebServerIfNeeded();
-
-  const String portalAddress = getConfigPortalAddress();
-
-  configPortalActive = true;
-  wifiFailedPermanently = false;  // Prevent ERROR state while AP is active.
-#ifdef DEBUG
-  Serial.print("Config portal started. SSID: ");
-  Serial.print(configPortalSsid);
-  Serial.print(" Password: ");
-  Serial.println(SOFTAP_PASSWORD);
-  Serial.print("Browse to ");
-  Serial.println(portalAddress);
-#endif
 }
 
 void updateConfigPortal() {
@@ -439,7 +327,7 @@ void updateConfigPortal() {
     configPortalReconnectRequested = false;
     server.stop();
     webServerRunning = false;
-    webServerRoutesConfigured = false;  // Re-register routes after restart to avoid missing handlers.
+    webServerRoutesConfigured = false;
     WiFi.softAPdisconnect(true);
     WiFi.mode(WIFI_STA);
     configPortalActive = false;
@@ -450,3 +338,4 @@ void updateConfigPortal() {
 }
 
 }  // namespace network
+

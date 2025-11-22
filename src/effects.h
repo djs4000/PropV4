@@ -2,17 +2,12 @@
 
 #include <Arduino.h>
 
+#include "state_machine.h"
+
 namespace effects {
-// Initialize LED strip and audio output hardware.
-void initEffects();
+void init();
+void update();
+void onStateChanged(FlameState state);
+void playKeypadClick();
+}
 
-// Startup hardware self-checks.
-void startStartupTest();
-void updateStartupTest();
-
-void startStartupBeep();
-void updateStartupBeep();
-
-// Placeholder for ongoing animation/audio updates beyond startup.
-void updateEffects();
-}  // namespace effects
