@@ -32,4 +32,4 @@ enum class ApiMode {
   FullOnline
 };
 
-inline ApiMode getApiMode() { return ApiMode::FullOnline; }
+inline ApiMode getApiMode() { return ApiMode::TestSendOnly; }

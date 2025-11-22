@@ -19,6 +19,7 @@ TFT_eSPI tft = TFT_eSPI();
 bool screenInitialized = false;
 
 FlameState lastStateRendered = ON;
+bool firstRender = true;
 float lastArmingProgress = -1.0f;
 bool lastNetworkWarning = false;
 
@@ -112,13 +113,14 @@ void update() {
     return;
   }
 
-  if (state != lastStateRendered) {
+  if (firstRender || state != lastStateRendered) {
     drawHeader();
     drawStatusLine(flameStateToString(state));
     drawTimer(network::getConfiguredBombDurationMs());
     lastArmingProgress = -1.0f;
     lastNetworkWarning = false;
     lastStateRendered = state;
+    firstRender = false;
   }
 
   const float progress = inputs::getArmingProgress01();
