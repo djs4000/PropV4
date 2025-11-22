@@ -126,7 +126,7 @@ static void startWifiAttempt() {
   WiFi.mode(WIFI_STA);
   WiFi.disconnect(true);
   WiFi.begin(runtimeConfig.wifiSsid.c_str(), runtimeConfig.wifiPass.c_str());
-#ifdef DEBUG
+#ifdef APP_DEBUG
   Serial.print("WiFi attempt ");
   Serial.print(static_cast<int>(wifiRetryCount + 1));
   Serial.print("/ ");
@@ -226,7 +226,7 @@ void updateWifi() {
   wifiRetryCount++;
   if (wifiRetryCount >= MAX_WIFI_RETRIES) {
     wifiFailedPermanently = true;
-#ifdef DEBUG
+#ifdef APP_DEBUG
     Serial.println("WiFi failed after max retries - starting config portal");
 #endif
     beginConfigPortal();
@@ -311,7 +311,7 @@ void updateApi() {
   const ApiMode mode = getApiMode();
 
   if (mode == ApiMode::Disabled) {
-#ifdef DEBUG
+#ifdef APP_DEBUG
     Serial.print("API disabled; payload: ");
     Serial.println(payload);
 #endif
@@ -326,7 +326,7 @@ void updateApi() {
 
   HTTPClient http;
   if (!http.begin(runtimeConfig.apiEndpoint)) {
-#ifdef DEBUG
+#ifdef APP_DEBUG
     Serial.println("HTTP begin failed for API endpoint");
 #endif
     if (mode == ApiMode::TestSendOnly) {
@@ -340,7 +340,7 @@ void updateApi() {
 
   if (mode == ApiMode::TestSendOnly) {
     if (httpCode != HTTP_CODE_OK) {
-#ifdef DEBUG
+#ifdef APP_DEBUG
       Serial.print("API POST failed (test mode): ");
       Serial.println(httpCode);
 #endif
@@ -374,20 +374,20 @@ void updateApi() {
       // Treat a well-formed JSON body as a successful API interaction for timeout tracking.
       lastSuccessfulApiMs = now;
 
-#ifdef DEBUG
+#ifdef APP_DEBUG
       Serial.print("API status: ");
       Serial.print(statusStr ? statusStr : "<null>");
       Serial.print(" remaining_ms=");
       Serial.println(remainingMs);
 #endif
     } else {
-#ifdef DEBUG
+#ifdef APP_DEBUG
       Serial.print("API JSON parse error: ");
       Serial.println(err.f_str());
 #endif
     }
   } else {
-#ifdef DEBUG
+#ifdef APP_DEBUG
     Serial.print("API POST failed: ");
     Serial.println(httpCode);
 #endif
@@ -418,7 +418,7 @@ void beginConfigPortal() {
 
   configPortalActive = true;
   wifiFailedPermanently = false;  // Prevent ERROR state while AP is active.
-#ifdef DEBUG
+#ifdef APP_DEBUG
   Serial.print("Config portal started. SSID: ");
   Serial.print(configPortalSsid);
   Serial.print(" Password: ");

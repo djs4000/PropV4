@@ -25,6 +25,9 @@ void formatTimeMMSS(uint32_t ms, char *buffer, size_t len);
 void initUI();
 void updateUI();
 
+// Prompt displayed when IR confirmation is pending during arming.
+void showArmingConfirmPrompt();
+
 // Display instructions when the device enters SoftAP configuration mode.
 void renderConfigPortalScreen(const String &ssid, const String &password);
 }  // namespace ui

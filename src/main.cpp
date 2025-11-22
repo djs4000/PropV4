@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <remote.hpp>
 
 #include "effects.h"
 #include "game_config.h"
@@ -68,7 +69,7 @@ static void renderMainUiIfNeeded(FlameState state) {
   }
 }
 
-#ifdef DEBUG
+#ifdef APP_DEBUG
 // Allows manual state overrides for testing API POST behavior without waiting on
 // backend-driven transitions.
 static void handleDebugSerialStateChange() {
@@ -121,7 +122,7 @@ static void handleDebugSerialStateChange() {
 #endif
 
 void setup() {
-#ifdef DEBUG
+#ifdef APP_DEBUG
   Serial.begin(115200);
   while (!Serial) {
     // Wait for serial to be ready (non-blocking for ESP32, loop exits immediately).
@@ -175,7 +176,7 @@ void loop() {
   // even when STA mode is connected.
   network::updateConfigPortal();
 
-#ifdef DEBUG
+#ifdef APP_DEBUG
   handleDebugSerialStateChange();
 #endif
 
