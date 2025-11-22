@@ -11,6 +11,9 @@ bool irWindowActive = false;
 uint32_t irWindowStartMs = 0;
 
 bool isGlobalTimeoutTriggered() {
+  if (getApiMode() != ApiMode::FullOnline) {
+    return false;
+  }
   const uint64_t now = millis();
   const uint64_t lastSuccess = network::getLastSuccessfulApiMs();
   return network::isWifiConnected() && (now - lastSuccess >= API_TIMEOUT_MS);
@@ -28,7 +31,7 @@ void setState(FlameState newState) {
   if (newState == currentState) {
     return;
   }
-#ifdef DEBUG
+#ifdef APP_DEBUG
   Serial.print("STATE: ");
   Serial.print(flameStateToString(currentState));
   Serial.print(" -> ");
@@ -42,7 +45,7 @@ void setState(FlameState newState) {
 
 void updateState() {
   if (currentState != ERROR_STATE && isGlobalTimeoutTriggered()) {
-#ifdef DEBUG
+#ifdef APP_DEBUG
     Serial.println("STATE: Global API timeout -> ERROR_STATE");
 #endif
     setState(ERROR_STATE);

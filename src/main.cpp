@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <IRremote.hpp>
 
 #include "effects.h"
 #include "game_config.h"
@@ -8,7 +9,7 @@
 #include "ui.h"
 
 void setup() {
-#ifdef DEBUG
+#ifdef APP_DEBUG
   Serial.begin(115200);
 #endif
   setState(ON);

@@ -1,5 +1,6 @@
 #include "inputs.h"
 
+#define USE_IRREMOTE_HPP_AS_PLAIN_INCLUDE
 #include <IRremote.hpp>
 #include <Wire.h>
 #include <cstring>

@@ -106,7 +106,7 @@ void startWifiAttempt() {
   WiFi.mode(WIFI_STA);
   WiFi.disconnect(true);
   WiFi.begin(runtimeConfig.wifiSsid.c_str(), runtimeConfig.wifiPass.c_str());
-#ifdef DEBUG
+#ifdef APP_DEBUG
   Serial.print("NET: WiFi attempt ");
   Serial.print(static_cast<int>(wifiRetryCount + 1));
   Serial.print("/");
@@ -176,7 +176,7 @@ void beginConfigPortal() {
 
   configPortalActive = true;
   wifiFailedPermanently = false;
-#ifdef DEBUG
+#ifdef APP_DEBUG
   Serial.print("NET: Config portal SSID ");
   Serial.print(configPortalSsid);
   Serial.print(" pass ");
@@ -271,6 +271,11 @@ bool isNetworkWarningActive() {
 }
 
 void updateApi() {
+  const ApiMode mode = getApiMode();
+  if (mode == ApiMode::Disabled) {
+    return;
+  }
+
   const uint32_t now = millis();
   if (!isWifiConnected() || configPortalActive) {
     return;
@@ -290,7 +295,7 @@ void updateApi() {
 
   HTTPClient http;
   if (!http.begin(runtimeConfig.apiEndpoint)) {
-#ifdef DEBUG
+#ifdef APP_DEBUG
     Serial.println("NET: HTTP begin failed");
 #endif
     return;
