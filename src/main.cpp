@@ -31,8 +31,14 @@ static void renderBootScreenIfNeeded() {
 }
 
 static void renderMainUiIfNeeded(FlameState state) {
-  // Placeholder progress wiring; will be replaced with real ARMING hold tracking.
-  const float armingProgress = (state == ARMING) ? 0.0f : 0.0f;
+  const unsigned long now = millis();
+
+  float armingProgress = 0.0f;
+  if (state == ARMING && isButtonHoldActive() && getButtonHoldStartMs() != 0) {
+    const uint32_t elapsed = now - getButtonHoldStartMs();
+    armingProgress = static_cast<float>(elapsed) / static_cast<float>(BUTTON_HOLD_MS);
+    armingProgress = constrain(armingProgress, 0.0f, 1.0f);
+  }
   const uint32_t remainingMs = configuredBombDurationMs;  // Countdown hook will update this later.
 
   bool shouldRender = false;
@@ -53,7 +59,9 @@ static void renderMainUiIfNeeded(FlameState state) {
   }
 
   if (shouldRender) {
-    ui::renderState(state, configuredBombDurationMs, remainingMs, armingProgress, DEFUSE_CODE_LENGTH, 0);
+    const uint8_t enteredDigits = (state == ARMED) ? getEnteredDigits() : 0;
+    ui::renderState(state, configuredBombDurationMs, remainingMs, armingProgress, DEFUSE_CODE_LENGTH,
+                    enteredDigits);
     lastRenderedState = state;
     lastRenderedRemainingMs = remainingMs;
     lastRenderedArmingProgress = armingProgress;
@@ -81,6 +89,9 @@ static void handleDebugSerialStateChange() {
       break;
     case '2':
       requestedState = ACTIVE;
+      // Ensure manual activation doesn't immediately revert to READY due to a
+      // non-running match status pulled from the network layer.
+      setMatchStatus(Running);
       break;
     case '3':
       requestedState = ARMING;

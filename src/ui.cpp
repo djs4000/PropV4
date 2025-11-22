@@ -32,6 +32,14 @@ bool screenInitialized = false;
 bool layoutDrawn = false;
 bool bootLayoutDrawn = false;
 
+// Cache of the last rendered dynamic values so we avoid unnecessary redraws.
+FlameState lastRenderedState = ON;
+String lastTimerText;
+String lastStatusText;
+int16_t lastBarFill = -1;
+uint8_t lastCodeLength = 0;
+bool renderCacheInvalidated = true;
+
 String lastBootWifiLine;
 String lastBootStatusLine;
 String lastBootEndpointLine;
@@ -190,6 +198,9 @@ void initMainScreen() {
 
   // Clear potential defuse code area.
   tft.fillRect(0, CODE_Y - 16, tft.width(), 32, BACKGROUND_COLOR);
+
+  // Ensure the next render repaints all dynamic elements after the reset.
+  renderCacheInvalidated = true;
 }
 
 void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs, float armingProgress01,
@@ -197,11 +208,16 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   ensureDisplayReady();
   drawStaticLayout();
 
-  static FlameState lastState = ON;
-  static String lastTimerText;
-  static String lastStatusText;
-  static int16_t lastBarFill = -1;
-  static uint8_t lastCodeLength = 0;
+  // If the layout was reinitialized (e.g., after leaving config mode), drop the
+  // caches so every dynamic element is redrawn on this pass.
+  if (renderCacheInvalidated) {
+    lastTimerText = "";
+    lastStatusText = "";
+    lastBarFill = -1;
+    lastCodeLength = 0;
+    lastRenderedState = ON;
+    renderCacheInvalidated = false;
+  }
 
   // Timer
   char timeBuffer[8] = {0};
@@ -237,7 +253,7 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
 
   // Defuse code placeholders are only shown when armed.
   if (state == ARMED) {
-    if (lastState != ARMED || lastCodeLength != codeLength) {
+    if (lastRenderedState != ARMED || lastCodeLength != codeLength) {
       tft.fillRect(0, CODE_Y - 16, tft.width(), 32, BACKGROUND_COLOR);
 
       String placeholders;
@@ -252,7 +268,7 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
       drawCenteredText(placeholders, CODE_Y, CODE_TEXT_SIZE, 24);
       lastCodeLength = codeLength;
     }
-  } else if (lastState == ARMED) {
+  } else if (lastRenderedState == ARMED) {
     // Clear placeholders when leaving ARMED.
     tft.fillRect(0, CODE_Y - 16, tft.width(), 32, BACKGROUND_COLOR);
     lastCodeLength = 0;
@@ -269,7 +285,7 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   tft.drawString(ipOverlay, 2, tft.height() - 2);
 #endif
 
-  lastState = state;
+  lastRenderedState = state;
 }
 
 void renderConfigPortalScreen(const String &ssid, const String &password) {

@@ -46,8 +46,12 @@ void updateState() {
     return;
   }
 
-  // Sync the latest match status from the network module.
-  setMatchStatus(network::getRemoteMatchStatus());
+  // Sync the latest match status from the network module only after a
+  // successful API response. This prevents manual/debug overrides from being
+  // immediately reset when the API is disabled or hasn't provided data yet.
+  if (network::hasReceivedApiResponse()) {
+    setMatchStatus(network::getRemoteMatchStatus());
+  }
 
   // Placeholder button handling: actual input module will call into the state
   // machine to start/stop arming. For now we maintain stub timing logic to
@@ -65,8 +69,9 @@ void updateState() {
       break;
 
     case ACTIVE:
-      // TODO: replace with actual button-hold detection from inputs.cpp.
-      if (armingHoldActive && (now - armingHoldStartMs >= BUTTON_HOLD_MS)) {
+      // Both buttons pressed immediately transitions to ARMING; hold timer is
+      // tracked for the subsequent ARMING->ARMED promotion.
+      if (armingHoldActive) {
         setState(ARMING);
       }
       if (currentMatchStatus == WaitingOnStart || currentMatchStatus == Countdown ||
@@ -77,18 +82,20 @@ void updateState() {
 
     case ARMING:
       // Hold timer continues; if released early, revert to ACTIVE.
-      if (armingHoldActive) {
-        if (now - armingHoldStartMs >= BUTTON_HOLD_MS) {
-          setState(ARMED);
-          armingHoldActive = false;
-        }
-      } else {
-        setState(ACTIVE);
-      }
-
       if (currentMatchStatus == WaitingOnStart || currentMatchStatus == Countdown ||
           currentMatchStatus == WaitingOnFinalData) {
         setState(READY);
+        break;
+      }
+
+      if (!armingHoldActive) {
+        setState(ACTIVE);
+        break;
+      }
+
+      if (now - armingHoldStartMs >= BUTTON_HOLD_MS) {
+        setState(ARMED);
+        stopButtonHold();
       }
       break;
 
@@ -117,12 +124,29 @@ void updateState() {
     case ERROR_STATE:
       // Placeholder: reset to ON after BUTTON_HOLD_MS of both buttons pressed.
       if (armingHoldActive && (now - armingHoldStartMs >= BUTTON_HOLD_MS)) {
-        armingHoldActive = false;
+        stopButtonHold();
         setState(ON);
       }
       break;
   }
 }
+
+void startButtonHold() {
+  if (armingHoldActive) {
+    return;
+  }
+  armingHoldActive = true;
+  armingHoldStartMs = millis();
+}
+
+void stopButtonHold() {
+  armingHoldActive = false;
+  armingHoldStartMs = 0;
+}
+
+bool isButtonHoldActive() { return armingHoldActive; }
+
+uint32_t getButtonHoldStartMs() { return armingHoldStartMs; }
 
 void setMatchStatus(MatchStatus status) { currentMatchStatus = status; }
 

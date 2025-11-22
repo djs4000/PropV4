@@ -37,6 +37,12 @@ MatchStatus getMatchStatus();
 void setArmedTimerMs(uint32_t remainingMs);
 uint32_t getArmedTimerMs();
 
+// Button hold helpers (driven by inputs module)
+void startButtonHold();
+void stopButtonHold();
+bool isButtonHoldActive();
+uint32_t getButtonHoldStartMs();
+
 // Utility conversion helpers
 const char *flameStateToString(FlameState state);
 const char *matchStatusToString(MatchStatus status);
