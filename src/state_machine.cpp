@@ -90,15 +90,24 @@ void updateState() {
       if (!irWindowActive && inputs::consumeArmingHoldComplete()) {
         irWindowActive = true;
         irWindowStartMs = now;
+#ifdef APP_DEBUG
+        Serial.println("STATE: Arming hold complete, IR window opened");
+#endif
       }
 
       if (irWindowActive) {
         if (inputs::consumeIrConfirmation()) {
           setState(ARMED);
           clearIrWindow();
+#ifdef APP_DEBUG
+          Serial.println("IR: Confirmation received");
+#endif
         } else if (now - irWindowStartMs >= IR_CONFIRM_WINDOW_MS) {
           setState(ACTIVE);
           clearIrWindow();
+#ifdef APP_DEBUG
+          Serial.println("IR: Confirmation timed out");
+#endif
         }
       }
       break;

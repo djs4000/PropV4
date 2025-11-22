@@ -37,6 +37,13 @@ uint32_t keyChangeMs = 0;
 
 bool irConfirmFlag = false;
 
+#ifdef APP_DEBUG
+void logBuffer() {
+  Serial.print("INPUTS: buffer -> ");
+  Serial.println(defuseBuffer);
+}
+#endif
+
 bool writePcf(uint8_t addr, uint8_t value) {
   Wire.beginTransmission(addr);
   Wire.write(value);
@@ -98,8 +105,35 @@ void handleDigit(char digit) {
   if (defuseLength < DEFUSE_CODE_LENGTH) {
     defuseBuffer[defuseLength++] = digit;
     defuseBuffer[defuseLength] = '\0';
+#ifdef APP_DEBUG
+    logBuffer();
+#endif
   }
 }
+
+#ifdef APP_DEBUG
+void handleDebugSerial() {
+  while (Serial.available() > 0) {
+    const char c = static_cast<char>(Serial.read());
+    if (c == '\n' || c == '\r') {
+      continue;
+    }
+    Serial.print("INPUTS: debug char ");
+    Serial.println(c);
+
+    if (c >= '0' && c <= '9') {
+      handleDigit(c);
+      effects::playKeypadClick();
+    } else if (c == '*') {
+      resetDefuseBufferInternal();
+      Serial.println("INPUTS: buffer cleared");
+    } else if (c == 'i' || c == 'I') {
+      irConfirmFlag = true;
+      Serial.println("IR: debug confirmation queued");
+    }
+  }
+}
+#endif
 }  // namespace
 
 namespace inputs {
@@ -115,8 +149,15 @@ void init() {
 void update() {
   const uint32_t now = millis();
 
+#ifdef APP_DEBUG
+  handleDebugSerial();
+#endif
+
   if (IrReceiver.decode()) {
     irConfirmFlag = true;
+#ifdef APP_DEBUG
+    Serial.println("IR: signal received");
+#endif
     IrReceiver.resume();
   }
 
@@ -147,6 +188,10 @@ void update() {
   if (now - keyChangeMs >= KEY_DEBOUNCE_MS && debouncedKey != rawKey) {
     debouncedKey = rawKey;
     if (debouncedKey != '\0') {
+#ifdef APP_DEBUG
+      Serial.print("INPUTS: keypad ");
+      Serial.println(debouncedKey);
+#endif
       handleDigit(debouncedKey);
       effects::playKeypadClick();
     }
@@ -168,6 +213,9 @@ float getArmingProgress01() {
 bool consumeArmingHoldComplete() {
   if (holdCompleteFlag) {
     holdCompleteFlag = false;
+#ifdef APP_DEBUG
+    Serial.println("INPUTS: hold complete");
+#endif
     return true;
   }
   return false;

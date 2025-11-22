@@ -34,6 +34,7 @@ bool apiResponseReceived = false;
 uint8_t wifiRetryCount = 0;
 uint32_t wifiAttemptStartMs = 0;
 bool wifiFailedPermanently = false;
+bool lastWifiConnected = false;
 
 Preferences preferences;
 bool preferencesInitialized = false;
@@ -181,6 +182,8 @@ void beginConfigPortal() {
   Serial.print(configPortalSsid);
   Serial.print(" pass ");
   Serial.println(SOFTAP_PASSWORD);
+  Serial.print("NET: Portal IP ");
+  Serial.println(WiFi.softAPIP());
 #endif
 }
 }
@@ -194,6 +197,7 @@ void beginWifi() {
   webServerRunning = false;
   webServerRoutesConfigured = false;
   lastSuccessfulApiMs = 0;
+  lastWifiConnected = false;
   startWifiAttempt();
 }
 
@@ -207,8 +211,22 @@ void updateWifi() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
+    if (!lastWifiConnected) {
+#ifdef APP_DEBUG
+      Serial.print("NET: Connected, IP ");
+      Serial.println(WiFi.localIP());
+#endif
+      lastWifiConnected = true;
+    }
     startWebServerIfNeeded();
     return;
+  }
+
+  if (lastWifiConnected) {
+#ifdef APP_DEBUG
+    Serial.println("NET: WiFi disconnected");
+#endif
+    lastWifiConnected = false;
   }
 
   const uint32_t now = millis();
@@ -250,6 +268,16 @@ String getConfigPortalAddress() {
     return String("http://") + WiFi.localIP().toString();
   }
   return String("http://192.168.4.1");
+}
+
+String getDisplayIpString() {
+  if (configPortalActive) {
+    return WiFi.softAPIP().toString();
+  }
+  if (isWifiConnected()) {
+    return WiFi.localIP().toString();
+  }
+  return String("");
 }
 
 String getWifiIpString() {
@@ -314,8 +342,17 @@ void updateApi() {
         remoteStatus = parsedStatus;
         apiResponseReceived = true;
         lastSuccessfulApiMs = now;
+#ifdef APP_DEBUG
+        Serial.print("NET: API status -> ");
+        Serial.println(matchStatusToString(remoteStatus));
+#endif
       }
     }
+  } else {
+#ifdef APP_DEBUG
+    Serial.print("NET: HTTP error code ");
+    Serial.println(httpCode);
+#endif
   }
 
   http.end();

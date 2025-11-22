@@ -22,6 +22,7 @@ uint32_t getConfiguredBombDurationMs();
 String getConfigPortalSsid();
 String getConfigPortalPassword();
 String getConfigPortalAddress();
+String getDisplayIpString();
 String getWifiIpString();
 
 uint64_t getLastSuccessfulApiMs();
