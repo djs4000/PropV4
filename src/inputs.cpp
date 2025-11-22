@@ -1,3 +1,7 @@
+#include <Arduino.h>
+#define USE_IRREMOTE_HPP_AS_PLAIN_INCLUDE
+#include <remote.hpp>
+
 #include "inputs.h"
 
 #include <Wire.h>
@@ -121,6 +125,25 @@ void handleDigitPress(char digit) {
 }
 }  // namespace
 
+static bool irConfirmationPending = false;
+
+void initIr() { IrReceiver.begin(27, ENABLE_LED_FEEDBACK); }
+
+void updateIr() {
+  if (IrReceiver.decode()) {
+    irConfirmationPending = true;
+    IrReceiver.resume();
+  }
+}
+
+bool consumeIrConfirmation() {
+  if (irConfirmationPending) {
+    irConfirmationPending = false;
+    return true;
+  }
+  return false;
+}
+
 void initInputs() {
   Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ);
 
@@ -128,12 +151,15 @@ void initInputs() {
   writePcf(KEYPAD_ADDR, 0xFF);
   writePcf(BUTTON_ADDR, 0xFF);
 
+  initIr();
   resetDefuseBuffer();
 }
 
 void updateInputs() {
   const uint32_t now = millis();
   const FlameState state = getState();
+
+  updateIr();
 
   if (state != lastState) {
     resetDefuseBuffer();
@@ -149,13 +175,18 @@ void updateInputs() {
 
   if (now - buttonsChangeMs >= BUTTON_DEBOUNCE_MS && debouncedButtons != rawButtonsPressed) {
     debouncedButtons = rawButtonsPressed;
-#ifdef DEBUG
+#ifdef APP_DEBUG
     Serial.println(debouncedButtons ? "BUTTONS: both pressed" : "BUTTONS: released");
 #endif
     if (debouncedButtons) {
       startButtonHold();
     } else {
-      stopButtonHold();
+      const bool holdCompleted = getButtonHoldStartMs() != 0 && (now - getButtonHoldStartMs() >= BUTTON_HOLD_MS);
+      if (getState() == ARMING && holdCompleted) {
+        // Allow buttons to be released during the IR confirmation window.
+      } else {
+        stopButtonHold();
+      }
     }
   }
 
@@ -168,7 +199,7 @@ void updateInputs() {
 
   if (now - keyChangeMs >= KEY_DEBOUNCE_MS && debouncedKey != rawKey) {
     debouncedKey = rawKey;
-#ifdef DEBUG
+#ifdef APP_DEBUG
     if (debouncedKey != '\0') {
       Serial.print("KEYPAD: ");
       Serial.println(debouncedKey);
