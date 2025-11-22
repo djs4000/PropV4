@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 
+#include "game_config.h"
+
 // Flame state definitions follow agents.md strictly.
 enum FlameState {
   ON,
@@ -24,25 +26,25 @@ enum MatchStatus {
   Cancelled
 };
 
-// Accessors and update routine
-FlameState getState();
-void setState(FlameState newState);
+namespace state_machine {
+
+void init();
 void updateState();
 
-// Match status helpers (populated by the networking layer)
+FlameState getState();
+void setState(FlameState newState);
+
 void setMatchStatus(MatchStatus status);
 MatchStatus getMatchStatus();
 
-// Timer helpers for ARMED countdown (placeholder for later implementation)
+// Track IR confirmation window for UI cues
+bool isIrConfirmationPending();
+
+// Provide armed timer placeholder (kept for compatibility)
 void setArmedTimerMs(uint32_t remainingMs);
 uint32_t getArmedTimerMs();
 
-// Button hold helpers (driven by inputs module)
-void startButtonHold();
-void stopButtonHold();
-bool isButtonHoldActive();
-uint32_t getButtonHoldStartMs();
-
-// Utility conversion helpers
 const char *flameStateToString(FlameState state);
 const char *matchStatusToString(MatchStatus status);
+
+}  // namespace state_machine

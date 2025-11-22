@@ -1,24 +1,41 @@
 #include "state_machine.h"
 
 #include "game_config.h"
+#include "inputs.h"
 #include "network.h"
-#include "util.h"
 
 namespace {
 FlameState currentState = ON;
 MatchStatus currentMatchStatus = WaitingOnStart;
 uint32_t armedTimerMs = DEFAULT_BOMB_DURATION_MS;
 
-// Tracks how long both buttons have been held during ARMING/ERROR recovery.
-uint32_t armingHoldStartMs = 0;
-bool armingHoldActive = false;
+bool irWindowActive = false;
+uint32_t irWindowStartMs = 0;
+
+void logTransition(FlameState from, FlameState to) {
+#ifdef DEBUG
+  Serial.print("STATE: ");
+  Serial.print(state_machine::flameStateToString(from));
+  Serial.print(" -> ");
+  Serial.println(state_machine::flameStateToString(to));
+#endif
+}
 
 bool isGlobalTimeoutTriggered() {
   const uint64_t now = millis();
   const uint64_t lastSuccess = network::getLastSuccessfulApiMs();
-  return network::isWifiConnected() && (now - lastSuccess >= API_TIMEOUT_MS);
+  return (now - lastSuccess) >= API_TIMEOUT_MS;
 }
+
+void resetIrWindow() {
+  irWindowActive = false;
+  irWindowStartMs = 0;
 }
+}  // namespace
+
+namespace state_machine {
+
+void init() { currentState = ON; }
 
 FlameState getState() { return currentState; }
 
@@ -26,40 +43,36 @@ void setState(FlameState newState) {
   if (newState == currentState) {
     return;
   }
-#ifdef DEBUG
-  Serial.print("STATE: ");
-  Serial.print(flameStateToString(currentState));
-  Serial.print(" -> ");
-  Serial.println(flameStateToString(newState));
-#endif
+  logTransition(currentState, newState);
   currentState = newState;
-  // Future: trigger effects/UI hooks here.
+  if (newState != ARMING) {
+    resetIrWindow();
+  }
 }
 
 void updateState() {
-  // Apply global networking timeout rule first for all non-error states.
   if (currentState != ERROR_STATE && isGlobalTimeoutTriggered()) {
 #ifdef DEBUG
-    Serial.println("Global API timeout triggered; entering ERROR_STATE");
+    Serial.println("STATE: Global API timeout");
 #endif
     setState(ERROR_STATE);
     return;
   }
 
-  // Sync the latest match status from the network module only after a
-  // successful API response. This prevents manual/debug overrides from being
-  // immediately reset when the API is disabled or hasn't provided data yet.
+  const uint32_t now = millis();
+
+  // keep match status aligned with network results when available
   if (network::hasReceivedApiResponse()) {
     setMatchStatus(network::getRemoteMatchStatus());
   }
 
-  // Placeholder button handling: actual input module will call into the state
-  // machine to start/stop arming. For now we maintain stub timing logic to
-  // illustrate the non-blocking pattern without implementing hardware reads.
-  const uint32_t now = millis();
-
   switch (currentState) {
     case ON:
+      if (network::hasReceivedApiResponse()) {
+        setState(READY);
+      } else if (network::hasWifiFailedPermanently()) {
+        setState(ERROR_STATE);
+      }
       break;
 
     case READY:
@@ -69,45 +82,54 @@ void updateState() {
       break;
 
     case ACTIVE:
-      // Both buttons pressed immediately transitions to ARMING; hold timer is
-      // tracked for the subsequent ARMING->ARMED promotion.
-      if (armingHoldActive) {
+      if (inputs::consumeArmingGestureStart()) {
+        resetIrWindow();
         setState(ARMING);
       }
-      if (currentMatchStatus == WaitingOnStart || currentMatchStatus == Countdown ||
-          currentMatchStatus == WaitingOnFinalData) {
+      if (currentMatchStatus != Running && currentMatchStatus != Countdown &&
+          currentMatchStatus != WaitingOnFinalData) {
         setState(READY);
       }
       break;
 
-    case ARMING:
-      // Hold timer continues; if released early, revert to ACTIVE.
-      if (currentMatchStatus == WaitingOnStart || currentMatchStatus == Countdown ||
-          currentMatchStatus == WaitingOnFinalData) {
-        setState(READY);
-        break;
-      }
-
-      if (!armingHoldActive) {
+    case ARMING: {
+      if (!irWindowActive && !inputs::areButtonsPressed()) {
+        resetIrWindow();
         setState(ACTIVE);
         break;
       }
 
-      if (now - armingHoldStartMs >= BUTTON_HOLD_MS) {
-        setState(ARMED);
-        stopButtonHold();
+      if (!irWindowActive && inputs::consumeButtonHoldComplete()) {
+        irWindowActive = true;
+        irWindowStartMs = now;
       }
-      break;
 
-    case ARMED:
-      // Countdown placeholder. Actual timing will be integrated with inputs/effects.
-      if (armedTimerMs == 0) {
-        setState(DETONATED);
-      }
-      if (currentMatchStatus == Completed || currentMatchStatus == Cancelled) {
-        setState(READY);
+      if (irWindowActive) {
+        if (inputs::consumeIrConfirmation()) {
+          setState(ARMED);
+          resetIrWindow();
+          break;
+        }
+        if (now - irWindowStartMs >= IR_CONFIRM_WINDOW_MS) {
+          resetIrWindow();
+          setState(ACTIVE);
+        }
       }
       break;
+    }
+
+    case ARMED: {
+      if (inputs::consumeDefuseEntryComplete()) {
+        const String configured = network::getConfiguredDefuseCode();
+        const bool matches = configured.length() == DEFUSE_CODE_LENGTH &&
+                             configured.equals(inputs::getDefuseBuffer());
+        inputs::resetDefuseBuffer();
+        if (matches) {
+          setState(DEFUSED);
+        }
+      }
+      break;
+    }
 
     case DEFUSED:
       if (currentMatchStatus == WaitingOnStart) {
@@ -122,35 +144,18 @@ void updateState() {
       break;
 
     case ERROR_STATE:
-      // Placeholder: reset to ON after BUTTON_HOLD_MS of both buttons pressed.
-      if (armingHoldActive && (now - armingHoldStartMs >= BUTTON_HOLD_MS)) {
-        stopButtonHold();
+      if (inputs::consumeButtonHoldComplete()) {
         setState(ON);
       }
       break;
   }
 }
 
-void startButtonHold() {
-  if (armingHoldActive) {
-    return;
-  }
-  armingHoldActive = true;
-  armingHoldStartMs = millis();
-}
-
-void stopButtonHold() {
-  armingHoldActive = false;
-  armingHoldStartMs = 0;
-}
-
-bool isButtonHoldActive() { return armingHoldActive; }
-
-uint32_t getButtonHoldStartMs() { return armingHoldStartMs; }
-
 void setMatchStatus(MatchStatus status) { currentMatchStatus = status; }
 
 MatchStatus getMatchStatus() { return currentMatchStatus; }
+
+bool isIrConfirmationPending() { return irWindowActive; }
 
 void setArmedTimerMs(uint32_t remainingMs) { armedTimerMs = remainingMs; }
 
@@ -175,7 +180,7 @@ const char *flameStateToString(FlameState state) {
     case ERROR_STATE:
       return "Error";
     default:
-      return "Unknown"; // Should not happen; kept for safety.
+      return "Unknown";
   }
 }
 
@@ -197,3 +202,5 @@ const char *matchStatusToString(MatchStatus status) {
       return "Unknown";
   }
 }
+
+}  // namespace state_machine

@@ -9,5 +9,6 @@ namespace util {
 
 // Convert string from API to MatchStatus; returns true on successful mapping.
 bool parseMatchStatus(const char *statusStr, MatchStatus &outStatus);
+String formatTimeMMSS(uint32_t ms);
 
 }  // namespace util
