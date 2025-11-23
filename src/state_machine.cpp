@@ -40,6 +40,11 @@ void resetArmingFlow() {
   armingHoldComplete = false;
   irWindowActive = false;
   irWindowStartMs = 0;
+  clearIrConfirmation();
+}
+
+bool isGameOverStatus(MatchStatus status) {
+  return status == WaitingOnFinalData || status == Completed || status == Cancelled;
 }
 
 bool isGameTimerCountdownAllowed() {
@@ -121,6 +126,11 @@ void setState(FlameState newState) {
   Serial.println(flameStateToString(newState));
 #endif
   currentState = newState;
+
+  if (oldState == ARMING && newState != ARMING) {
+    resetArmingFlow();
+    stopButtonHold();
+  }
   // Timer lifecycle hooks based on state transitions.
   if (newState == ARMED && oldState != ARMED) {
     bombTimerActive = true;
@@ -155,6 +165,29 @@ void updateState() {
   // immediately reset when the API is disabled or hasn't provided data yet.
   if (network::hasReceivedApiResponse()) {
     setMatchStatus(network::getRemoteMatchStatus());
+  }
+
+  const bool gameOver = isGameOverStatus(currentMatchStatus);
+  ui::setGameOver(gameOver);
+  if (gameOver) {
+    gameTimerValid = false;
+    gameTimerRemainingMs = 0;
+    gameTimerLastUpdateMs = millis();
+    bombTimerActive = false;
+    bombTimerRemainingMs = 0;
+    resetArmingFlow();
+    stopButtonHold();
+    if (currentState != READY && currentState != ON) {
+      setState(READY);
+      return;
+    }
+  }
+
+  if (currentMatchStatus == WaitingOnStart) {
+    resetArmingFlow();
+    stopButtonHold();
+    clearIrConfirmation();
+    clearDefuseBuffer();
   }
 
   // Placeholder button handling: actual input module will call into the state
@@ -231,7 +264,8 @@ void updateState() {
       break;
 
     case ARMED:
-      if (currentMatchStatus == Completed || currentMatchStatus == Cancelled) {
+      if (currentMatchStatus == Completed || currentMatchStatus == Cancelled ||
+          currentMatchStatus == WaitingOnFinalData) {
         setState(READY);
       }
       break;

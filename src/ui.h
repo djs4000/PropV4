@@ -16,7 +16,7 @@ void initMainScreen();
 
 // Render the primary game UI reflecting the provided state and progress values.
 void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs, float armingProgress01,
-                 uint8_t codeLength, uint8_t enteredDigits);
+                 uint8_t codeLength, uint8_t enteredDigits, const char *enteredCode);
 
 // Helper to format a millisecond value into MM:SS (zero-padded) for on-screen display.
 void formatTimeMMSS(uint32_t ms, char *buffer, size_t len);
@@ -26,6 +26,9 @@ void formatTimeSSMM(uint32_t ms, char *buffer, size_t len);
 // Placeholder UI lifecycle hooks for future expansion.
 void initUI();
 void updateUI();
+
+// Game over overlay flag driven by API statuses without introducing new states.
+void setGameOver(bool active);
 
 // Prompt displayed when IR confirmation is pending during arming.
 void showArmingConfirmPrompt();

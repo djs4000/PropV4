@@ -109,6 +109,7 @@ void handleDigitPress(char digit) {
   if (enteredDigits < DEFUSE_CODE_LENGTH) {
     defuseBuffer[enteredDigits++] = digit;
     defuseBuffer[enteredDigits] = '\0';
+    effects::onKeypadKey();
   }
 
   if (enteredDigits >= DEFUSE_CODE_LENGTH) {
@@ -118,7 +119,7 @@ void handleDigitPress(char digit) {
     if (matches) {
       setState(DEFUSED);
     } else {
-      // TODO: play a short error tone via effects module.
+      effects::onWrongCode();
     }
 
     resetDefuseBuffer();
@@ -144,6 +145,8 @@ bool consumeIrConfirmation() {
   }
   return false;
 }
+
+void clearIrConfirmation() { irConfirmationPending = false; }
 
 void initInputs() {
   Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ);
@@ -207,10 +210,13 @@ void updateInputs() {
     }
 #endif
     if (debouncedKey >= '0' && debouncedKey <= '9') {
-      effects::onKeypadKey();
       handleDigitPress(debouncedKey);
     }
   }
 }
 
 uint8_t getEnteredDigits() { return enteredDigits; }
+
+const char *getDefuseBuffer() { return defuseBuffer; }
+
+void clearDefuseBuffer() { resetDefuseBuffer(); }

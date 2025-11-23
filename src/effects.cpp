@@ -39,6 +39,14 @@ struct ToneState {
 
 ToneState toneState;
 
+struct DoubleBeepState {
+  bool active = false;
+  uint8_t step = 0;
+  uint32_t nextBeepMs = 0;
+};
+
+DoubleBeepState wrongCodeBeep;
+
 uint32_t colorToPixel(const RgbColor &c, float scale = 1.0f) {
   scale = constrain(scale, 0.0f, 1.0f);
   const uint8_t r = static_cast<uint8_t>(static_cast<float>(c.r) * scale);
@@ -116,10 +124,11 @@ void renderActive(uint32_t now) {
 void renderArming() {
   const uint8_t litRows = static_cast<uint8_t>(ceilf(constrain(armingProgress01, 0.0f, 1.0f) * LED_MATRIX_ROWS));
   for (uint8_t row = 0; row < LED_MATRIX_ROWS; ++row) {
+    const uint8_t mappedRow = static_cast<uint8_t>(LED_MATRIX_ROWS - 1 - row);
     const bool rowLit = row < litRows;
     const float scale = rowLit ? 0.8f : 0.05f;
     for (uint8_t col = 0; col < LED_MATRIX_COLS; ++col) {
-      strip.setPixelColor(mapRowColToIndex(row, col), colorToPixel(COLOR_ARMING, scale));
+      strip.setPixelColor(mapRowColToIndex(mappedRow, col), colorToPixel(COLOR_ARMING, scale));
     }
   }
 }
@@ -212,6 +221,36 @@ void handleArmedBeeps(uint32_t now, FlameState state) {
     lastArmedBeepMs = now;
   }
 }
+
+void handleWrongCodeBeep(uint32_t now) {
+  if (!wrongCodeBeep.active) {
+    return;
+  }
+
+  if (toneState.active && now < toneState.endMs) {
+    return;
+  }
+
+  if (now < wrongCodeBeep.nextBeepMs) {
+    return;
+  }
+
+  if (wrongCodeBeep.step == 0) {
+    effects::playBeep(850, 80, 150);
+    wrongCodeBeep.step = 1;
+    wrongCodeBeep.nextBeepMs = now + 160;
+    return;
+  }
+
+  if (wrongCodeBeep.step == 1) {
+    effects::playBeep(850, 80, 150);
+    wrongCodeBeep.step = 2;
+    wrongCodeBeep.nextBeepMs = now + 200;
+    return;
+  }
+
+  wrongCodeBeep.active = false;
+}
 }  // namespace
 
 namespace effects {
@@ -231,6 +270,7 @@ void init() {
 
 void update(uint32_t now) {
   updateTone();
+  handleWrongCodeBeep(now);
   handleCountdownBeeps(now);
   handleArmedBeeps(now, getState());
 
@@ -303,7 +343,13 @@ void onStateChanged(FlameState oldState, FlameState newState) {
   }
 }
 
-void onKeypadKey() { playBeep(2300, 50, 160); }
+void onKeypadKey() { playBeep(900, 40, 140); }
+
+void onWrongCode() {
+  wrongCodeBeep.active = true;
+  wrongCodeBeep.step = 0;
+  wrongCodeBeep.nextBeepMs = millis();
+}
 
 void onArmingConfirmed() { playBeep(2200, 200); }
 

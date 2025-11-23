@@ -15,6 +15,8 @@ constexpr uint16_t FOREGROUND_COLOR = TFT_WHITE;
 constexpr uint16_t DEFUSED_COLOR = TFT_GREEN;
 constexpr uint16_t DETONATED_BG_COLOR = TFT_RED;
 constexpr uint16_t DETONATED_TEXT_COLOR = TFT_BLACK;
+constexpr uint16_t ARMING_BAR_YELLOW = TFT_YELLOW;
+constexpr uint16_t ARMING_BAR_RED = TFT_RED;
 
 // Layout constants tuned for a 240x320 portrait canvas (rotation 0).
 constexpr uint8_t TITLE_TEXT_SIZE = 2;
@@ -53,12 +55,14 @@ int16_t lastBarFill = -1;
 uint32_t lastArmingBarUpdateMs = 0;
 float lastArmingProgress = -1.0f;
 uint8_t lastCodeLength = 0;
+String lastRenderedCode;
 bool renderCacheInvalidated = true;
 String lastDebugTimerText;
 String lastDebugMatchText;
 String lastDebugIpText;
 uint16_t lastTimerColor = FOREGROUND_COLOR;
 uint16_t lastStatusColor = FOREGROUND_COLOR;
+uint16_t lastArmingColor = FOREGROUND_COLOR;
 String lastTimerSecondsText;
 String lastTimerCentisecondsText;
 int16_t lastTimerStartX = -1;
@@ -66,6 +70,7 @@ int16_t lastTimerSecondsWidth = 0;
 int16_t lastTimerCentisecondsWidth = 0;
 uint32_t lastTimerRedrawMs = 0;
 uint32_t lastShownCentiseconds = UINT32_MAX;
+bool gameOverActive = false;
 
 String lastBootWifiLine;
 String lastBootStatusLine;
@@ -306,6 +311,14 @@ void renderBootScreen(const String &wifiSsid, bool wifiConnected, bool wifiFaile
   drawBootBlock("Endpoint:", apiEndpoint, 150, STATUS_TEXT_SIZE, BOOT_DETAIL_TEXT_SIZE, lastBootEndpointLine);
 }
 
+void setGameOver(bool active) {
+  if (gameOverActive == active) {
+    return;
+  }
+  gameOverActive = active;
+  renderCacheInvalidated = true;
+}
+
 void initMainScreen() {
   ensureDisplayReady();
   bootLayoutDrawn = false;  // Force boot overlay to redraw if revisited later.
@@ -328,7 +341,7 @@ void initMainScreen() {
 }
 
 void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs, float armingProgress01,
-                 uint8_t codeLength, uint8_t /*enteredDigits*/) {
+                 uint8_t codeLength, uint8_t enteredDigits, const char *enteredCode) {
   ensureDisplayReady();
 
   const uint32_t now = millis();
@@ -363,12 +376,14 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     lastArmingBarUpdateMs = 0;
     lastArmingProgress = -1.0f;
     lastCodeLength = 0;
+    lastRenderedCode = "";
     lastRenderedState = ON;
     lastDebugTimerText = "";
     lastDebugMatchText = "";
     lastDebugIpText = "";
     lastTimerColor = FOREGROUND_COLOR;
     lastStatusColor = FOREGROUND_COLOR;
+    lastArmingColor = FOREGROUND_COLOR;
     lastTimerSecondsText = "";
     lastTimerCentisecondsText = "";
     lastTimerStartX = -1;
@@ -417,7 +432,13 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   // Status line
   String statusText = "Status: ";
   statusText += flameStateToString(state);
-  const uint16_t statusColor = (state == DEFUSED) ? DEFUSED_COLOR : FOREGROUND_COLOR;
+  if (gameOverActive) {
+    statusText += " (Game Over)";
+  }
+  uint16_t statusColor = (state == DEFUSED) ? DEFUSED_COLOR : FOREGROUND_COLOR;
+  if (gameOverActive) {
+    statusColor = DETONATED_BG_COLOR;
+  }
   if (statusText != lastStatusText || statusColor != lastStatusColor) {
     drawStatusLine(statusText, statusColor);
     lastStatusText = statusText;
@@ -433,6 +454,14 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   const int16_t quantizedFill = static_cast<int16_t>((desiredFill / ARMING_BAR_CHUNK_PX) * ARMING_BAR_CHUNK_PX);
   const bool progressChanged = std::fabs(clampedProgress - lastArmingProgress) >= 0.01f;
   const bool timeElapsed = (now - lastArmingBarUpdateMs) >= ARMING_BAR_FRAME_INTERVAL_MS;
+  uint16_t armingColor = FOREGROUND_COLOR;
+  if (state == ARMING) {
+    if (clampedProgress >= 0.75f) {
+      armingColor = ARMING_BAR_RED;
+    } else if (clampedProgress >= 0.5f) {
+      armingColor = ARMING_BAR_YELLOW;
+    }
+  }
 
   if (stateChanged && state != ARMING && lastBarFill > 0) {
     tft.fillRect(barX() + BAR_BORDER, BAR_Y + BAR_BORDER, innerWidth, BAR_HEIGHT - 2 * BAR_BORDER,
@@ -440,51 +469,55 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     lastBarFill = 0;
     lastArmingProgress = 0.0f;
     lastArmingBarUpdateMs = now;
+    lastArmingColor = FOREGROUND_COLOR;
   }
 
-  if (state == ARMING && (progressChanged || timeElapsed || stateChanged || lastBarFill == -1)) {
+  if (state == ARMING &&
+      (progressChanged || timeElapsed || stateChanged || lastBarFill == -1 || armingColor != lastArmingColor)) {
     const int16_t clampedFill = constrain(quantizedFill, static_cast<int16_t>(0), innerWidth);
-    const int16_t delta = clampedFill - lastBarFill;
-    if (stateChanged || lastBarFill == -1) {
-      tft.fillRect(barX() + BAR_BORDER, BAR_Y + BAR_BORDER, innerWidth, BAR_HEIGHT - 2 * BAR_BORDER,
-                   BACKGROUND_COLOR);
+    const int16_t fillY = BAR_Y + BAR_BORDER;
+    const int16_t fillHeight = BAR_HEIGHT - 2 * BAR_BORDER;
+    const int16_t fillX = barX() + BAR_BORDER;
+
+    tft.fillRect(fillX, fillY, innerWidth, fillHeight, BACKGROUND_COLOR);
+    if (clampedFill > 0) {
+      tft.fillRect(fillX, fillY, clampedFill, fillHeight, armingColor);
     }
-    if (delta != 0 || stateChanged || lastBarFill == -1) {
-      const int16_t fillY = BAR_Y + BAR_BORDER;
-      const int16_t fillHeight = BAR_HEIGHT - 2 * BAR_BORDER;
-      const int16_t fillX = barX() + BAR_BORDER;
-      if (delta > 0) {
-        tft.fillRect(fillX + lastBarFill, fillY, delta, fillHeight, FOREGROUND_COLOR);
-      } else if (delta < 0) {
-        tft.fillRect(fillX + clampedFill, fillY, -delta, fillHeight, BACKGROUND_COLOR);
-      }
-      lastBarFill = clampedFill;
-    }
+
+    lastBarFill = clampedFill;
     lastArmingBarUpdateMs = now;
     lastArmingProgress = clampedProgress;
+    lastArmingColor = armingColor;
   }
 
   // Defuse code placeholders are only shown when armed.
   if (state == ARMED) {
-    if (lastRenderedState != ARMED || lastCodeLength != codeLength) {
+    const String codeString = enteredCode ? String(enteredCode) : String("");
+    if (lastRenderedState != ARMED || lastCodeLength != codeLength || lastRenderedCode != codeString) {
       tft.fillRect(0, CODE_Y - 16, tft.width(), 32, BACKGROUND_COLOR);
 
-      String placeholders;
-      placeholders.reserve(codeLength * 2);
+      String codeDisplay;
+      codeDisplay.reserve(codeLength * 2);
       for (uint8_t i = 0; i < codeLength; ++i) {
-        placeholders += "_";
+        if (i < codeString.length()) {
+          codeDisplay += codeString[i];
+        } else {
+          codeDisplay += "_";
+        }
         if (i < codeLength - 1) {
-          placeholders += " ";
+          codeDisplay += " ";
         }
       }
 
-      drawCenteredText(placeholders, CODE_Y, CODE_TEXT_SIZE, 24);
+      drawCenteredText(codeDisplay, CODE_Y, CODE_TEXT_SIZE, 24);
       lastCodeLength = codeLength;
+      lastRenderedCode = codeString;
     }
   } else if (lastRenderedState == ARMED) {
     // Clear placeholders when leaving ARMED.
     tft.fillRect(0, CODE_Y - 16, tft.width(), 32, BACKGROUND_COLOR);
     lastCodeLength = 0;
+    lastRenderedCode = "";
   }
 
 #ifdef APP_DEBUG
