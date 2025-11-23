@@ -187,11 +187,10 @@ void formatTimeSSMM(uint32_t ms, char *buffer, size_t len) {
   }
 
   const uint32_t totalSeconds = ms / 1000;
-  const uint32_t minutes = totalSeconds / 60;
-  const uint32_t seconds = totalSeconds % 60;
+  const uint32_t centiseconds = (ms % 1000) / 10;
 
-  // Bomb timer uses SS:MM (seconds first) per UI request.
-  snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(seconds), static_cast<unsigned>(minutes));
+  // Bomb timer uses SS:cc (seconds first, then centiseconds) per UI request.
+  snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(totalSeconds), static_cast<unsigned>(centiseconds));
 }
 
 void renderBootScreen(const String &wifiSsid, bool wifiConnected, bool wifiFailed,
@@ -266,7 +265,6 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   // Timer
   const bool bombTimerExpired = (state == DETONATED) && (getBombTimerRemainingMs() == 0);
   const bool bombTimerDisplay = ((state == ARMED) && isBombTimerActive()) || bombTimerExpired;
-  const bool gameTimerValid = isGameTimerValid();
   uint32_t timerSource = 0;
   uint16_t timerColor = FOREGROUND_COLOR;
 
@@ -274,14 +272,11 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   if (bombTimerDisplay) {
     timerSource = getBombTimerRemainingMs();
     timerColor = (timerSource <= 10000) ? TFT_RED : FOREGROUND_COLOR;
-    formatTimeSSMM(timerSource, timeBuffer, sizeof(timeBuffer));
-  } else if (gameTimerValid) {
-    timerSource = getGameTimerRemainingMs();
-    formatTimeMMSS(timerSource, timeBuffer, sizeof(timeBuffer));
   } else {
-    timerSource = (remainingMs == 0) ? bombDurationMs : remainingMs;
-    formatTimeMMSS(timerSource, timeBuffer, sizeof(timeBuffer));
+    timerSource = bombDurationMs;
   }
+
+  formatTimeSSMM(timerSource, timeBuffer, sizeof(timeBuffer));
 
   const String timerText = String(timeBuffer);
   if (timerText != lastTimerText || timerColor != lastTimerColor) {
