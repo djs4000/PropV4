@@ -53,6 +53,9 @@ String lastDebugIpText;
 uint16_t lastTimerColor = FOREGROUND_COLOR;
 String lastTimerSecondsText;
 String lastTimerCentisecondsText;
+int16_t lastTimerStartX = -1;
+int16_t lastTimerSecondsWidth = 0;
+int16_t lastTimerCentisecondsWidth = 0;
 
 String lastBootWifiLine;
 String lastBootStatusLine;
@@ -182,6 +185,9 @@ void drawSegmentedTimer(const String &timerText, uint16_t timerColor) {
   const bool secondsChanged = (secondsPart != lastTimerSecondsText);
   const bool centisecondsChanged = (centisecondsPart != lastTimerCentisecondsText);
 
+  // Force a full redraw if layout anchors are unknown so the timer recenters.
+  const bool layoutChanged = colorChanged || secondsChanged || lastTimerStartX < 0;
+
   if (!colorChanged && !secondsChanged && !centisecondsChanged) {
     return;
   }
@@ -196,22 +202,33 @@ void drawSegmentedTimer(const String &timerText, uint16_t timerColor) {
   const int16_t totalWidth = secondsWidth + centisecondsWidth;
   const int16_t startX = std::max<int16_t>(0, (tft.width() - totalWidth) / 2);
   const int16_t baseY = TIMER_Y - textHeight / 2;
-  const int16_t secondsX = startX;
-  const int16_t centisecondsX = secondsX + secondsWidth;
 
-  if (colorChanged || secondsChanged) {
+  if (layoutChanged) {
+    const int16_t previousTotalWidth = lastTimerSecondsWidth + lastTimerCentisecondsWidth;
+    int16_t minStartX = startX;
+    int16_t maxEndX = startX + totalWidth;
+    if (lastTimerStartX >= 0) {
+      minStartX = std::min(minStartX, lastTimerStartX);
+      maxEndX = std::max<int16_t>(maxEndX, lastTimerStartX + previousTotalWidth);
+    }
+
+    const int16_t clearX = std::max<int16_t>(0, minStartX);
+    const int16_t clearWidth = std::min<int16_t>(tft.width() - clearX, maxEndX - minStartX);
     const int16_t clearY = TIMER_Y - TIMER_CLEAR_HEIGHT / 2;
-    const int16_t clearWidth = std::min<int16_t>(tft.width(), totalWidth);
-    const int16_t clearX = (clearWidth == tft.width()) ? 0 : startX;
 
     tft.fillRect(clearX, clearY, clearWidth, TIMER_CLEAR_HEIGHT, BACKGROUND_COLOR);
-    tft.drawString(secondsWithColon, secondsX, baseY);
-    tft.drawString(centisecondsPart, centisecondsX, baseY);
+    tft.drawString(secondsWithColon, startX, baseY);
+    tft.drawString(centisecondsPart, startX + secondsWidth, baseY);
+
+    lastTimerStartX = startX;
+    lastTimerSecondsWidth = secondsWidth;
+    lastTimerCentisecondsWidth = centisecondsWidth;
   } else if (centisecondsChanged) {
-    const int16_t previousWidth = tft.textWidth(lastTimerCentisecondsText, TIMER_TEXT_SIZE);
-    const int16_t clearWidth = std::max<int16_t>(centisecondsWidth, previousWidth);
+    const int16_t centisecondsX = lastTimerStartX + lastTimerSecondsWidth;
+    const int16_t clearWidth = std::max<int16_t>(centisecondsWidth, lastTimerCentisecondsWidth);
     tft.fillRect(centisecondsX, baseY, clearWidth, textHeight, BACKGROUND_COLOR);
     tft.drawString(centisecondsPart, centisecondsX, baseY);
+    lastTimerCentisecondsWidth = centisecondsWidth;
   }
 
   lastTimerSecondsText = secondsPart;
@@ -315,12 +332,16 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     lastTimerColor = FOREGROUND_COLOR;
     lastTimerSecondsText = "";
     lastTimerCentisecondsText = "";
+    lastTimerStartX = -1;
+    lastTimerSecondsWidth = 0;
+    lastTimerCentisecondsWidth = 0;
     renderCacheInvalidated = false;
   }
 
   // Timer
   const bool bombTimerExpired = (state == DETONATED) && (getBombTimerRemainingMs() == 0);
-  const bool bombTimerDisplay = ((state == ARMED) && isBombTimerActive()) || bombTimerExpired;
+  const bool bombTimerHeld = (state == DEFUSED);
+  const bool bombTimerDisplay = ((state == ARMED) && isBombTimerActive()) || bombTimerExpired || bombTimerHeld;
   uint32_t timerSource = 0;
   uint16_t timerColor = FOREGROUND_COLOR;
 

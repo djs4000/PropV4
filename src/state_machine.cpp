@@ -132,7 +132,9 @@ void setState(FlameState newState) {
     bombTimerLastUpdateMs = millis();
   } else if (oldState == ARMED && newState != ARMED) {
     bombTimerActive = false;
-    bombTimerRemainingMs = 0;
+    if (newState != DEFUSED) {
+      bombTimerRemainingMs = 0;
+    }
   }
 }
 
