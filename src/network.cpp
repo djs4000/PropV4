@@ -299,10 +299,17 @@ void updateApi() {
 
   // Keep outbound state/timer in sync with the current state machine status.
   outboundState = getState();
+  uint32_t timerMs = 0;
+  if (outboundState == ARMED && isBombTimerActive()) {
+    timerMs = getBombTimerRemainingMs();
+  } else if (isGameTimerValid()) {
+    timerMs = getGameTimerRemainingMs();
+  }
+  outboundTimerMs = timerMs;
 
   JsonDocument doc;
   doc["state"] = flameStateToString(outboundState);
-  doc["timer"] = outboundTimerMs;  // Placeholder until real timers are wired up.
+  doc["timer"] = outboundTimerMs;
   doc["timestamp"] = 0;           // Placeholder; real clock will be integrated later.
 
   String payload;
@@ -366,6 +373,8 @@ void updateApi() {
       baseRemainingTimestampMs = now;
       lastApiResponseMs = now;
       apiResponseReceived = true;
+
+      updateGameTimerFromApi(remainingMs);
 
       if (statusParsed) {
         remoteStatus = parsedStatus;

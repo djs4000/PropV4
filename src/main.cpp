@@ -40,7 +40,14 @@ static void renderMainUiIfNeeded(FlameState state) {
     armingProgress = static_cast<float>(elapsed) / static_cast<float>(BUTTON_HOLD_MS);
     armingProgress = constrain(armingProgress, 0.0f, 1.0f);
   }
-  const uint32_t remainingMs = configuredBombDurationMs;  // Countdown hook will update this later.
+  uint32_t remainingMs = configuredBombDurationMs;
+  if (state == ARMED && isBombTimerActive()) {
+    remainingMs = getBombTimerRemainingMs();
+  } else if (isGameTimerValid()) {
+    remainingMs = getGameTimerRemainingMs();
+  }
+  const uint32_t remainingSeconds = remainingMs / 1000;
+  const uint32_t lastRenderedSeconds = lastRenderedRemainingMs / 1000;
 
   bool shouldRender = false;
 
@@ -54,7 +61,7 @@ static void renderMainUiIfNeeded(FlameState state) {
     return;
   }
 
-  if (state != lastRenderedState || remainingMs != lastRenderedRemainingMs ||
+  if (state != lastRenderedState || remainingSeconds != lastRenderedSeconds ||
       armingProgress != lastRenderedArmingProgress) {
     shouldRender = true;
   }

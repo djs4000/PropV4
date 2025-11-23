@@ -45,6 +45,9 @@ uint32_t lastArmingBarUpdateMs = 0;
 float lastArmingProgress = -1.0f;
 uint8_t lastCodeLength = 0;
 bool renderCacheInvalidated = true;
+String lastDebugTimerText;
+String lastDebugMatchText;
+String lastDebugIpText;
 
 String lastBootWifiLine;
 String lastBootStatusLine;
@@ -237,12 +240,26 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     lastArmingProgress = -1.0f;
     lastCodeLength = 0;
     lastRenderedState = ON;
+    lastDebugTimerText = "";
+    lastDebugMatchText = "";
+    lastDebugIpText = "";
     renderCacheInvalidated = false;
   }
 
   // Timer
+  const bool bombTimerActive = (state == ARMED) && isBombTimerActive();
+  const bool gameTimerValid = isGameTimerValid();
+  uint32_t timerSource = 0;
+
+  if (bombTimerActive) {
+    timerSource = getBombTimerRemainingMs();
+  } else if (gameTimerValid) {
+    timerSource = getGameTimerRemainingMs();
+  } else {
+    timerSource = (remainingMs == 0) ? bombDurationMs : remainingMs;
+  }
+
   char timeBuffer[8] = {0};
-  const uint32_t timerSource = (remainingMs == 0) ? bombDurationMs : remainingMs;
   formatTimeMMSS(timerSource, timeBuffer, sizeof(timeBuffer));
   const String timerText = String(timeBuffer);
   if (timerText != lastTimerText) {
@@ -306,27 +323,34 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   // Two-line debug overlay along the bottom of the screen.
   const int16_t debugHeight = 22;
   const int16_t debugY = tft.height() - debugHeight;
-  tft.fillRect(0, debugY, tft.width(), debugHeight, BACKGROUND_COLOR);
-  tft.setTextSize(1);
   const String ipOverlay = "IP: " + network::getWifiIpString();
   const String matchOverlay = String("Match ") + matchStatusToString(network::getRemoteMatchStatus());
-  char apiTimerBuffer[8] = {0};
-  if (network::hasReceivedApiResponse()) {
-    formatTimeMMSS(network::getRemoteRemainingTimeMs(), apiTimerBuffer, sizeof(apiTimerBuffer));
+  char gameTimerBuffer[8] = {0};
+  if (isGameTimerValid()) {
+    formatTimeMMSS(getGameTimerRemainingMs(), gameTimerBuffer, sizeof(gameTimerBuffer));
   } else {
-    snprintf(apiTimerBuffer, sizeof(apiTimerBuffer), "--:--");
+    snprintf(gameTimerBuffer, sizeof(gameTimerBuffer), "--:--");
   }
-  const String timerOverlay = String("T ") + String(apiTimerBuffer);
+  const String timerOverlay = String("T ") + String(gameTimerBuffer);
 
-  // Match status on the upper line.
-  tft.setTextDatum(TL_DATUM);
-  tft.drawString(matchOverlay, 2, debugY + 2);
+  if (ipOverlay != lastDebugIpText || matchOverlay != lastDebugMatchText || timerOverlay != lastDebugTimerText) {
+    tft.fillRect(0, debugY, tft.width(), debugHeight, BACKGROUND_COLOR);
+    tft.setTextSize(1);
 
-  // IP on the bottom-left, timer on the bottom-right.
-  tft.setTextDatum(BL_DATUM);
-  tft.drawString(ipOverlay, 2, tft.height() - 2);
-  tft.setTextDatum(BR_DATUM);
-  tft.drawString(timerOverlay, tft.width() - 2, tft.height() - 2);
+    // Match status on the upper line.
+    tft.setTextDatum(TL_DATUM);
+    tft.drawString(matchOverlay, 2, debugY + 2);
+
+    // IP on the bottom-left, timer on the bottom-right.
+    tft.setTextDatum(BL_DATUM);
+    tft.drawString(ipOverlay, 2, tft.height() - 2);
+    tft.setTextDatum(BR_DATUM);
+    tft.drawString(timerOverlay, tft.width() - 2, tft.height() - 2);
+
+    lastDebugIpText = ipOverlay;
+    lastDebugMatchText = matchOverlay;
+    lastDebugTimerText = timerOverlay;
+  }
 #endif
 
   lastRenderedState = state;
