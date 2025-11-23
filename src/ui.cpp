@@ -274,7 +274,7 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     lastCodeLength = 0;
   }
 
-#ifdef DEBUG
+#ifdef APP_DEBUG
   // Tiny IP overlay for debugging along the bottom of the screen.
   const int16_t debugHeight = 12;
   const int16_t debugY = tft.height() - debugHeight;
@@ -323,6 +323,12 @@ void renderConfigPortalScreen(const String &ssid, const String &password) {
 
   lastRenderedSsid = ssid;
   lastRenderedPassword = password;
+}
+
+void showArmingConfirmPrompt() {
+  ensureDisplayReady();
+  drawStaticLayout();
+  drawCenteredText("Confirm activation", STATUS_Y, STATUS_TEXT_SIZE, 24);
 }
 
 void initUI() {

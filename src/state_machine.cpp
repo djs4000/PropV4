@@ -1,7 +1,10 @@
 #include "state_machine.h"
 
+#include "effects.h"
 #include "game_config.h"
+#include "inputs.h"
 #include "network.h"
+#include "ui.h"
 #include "util.h"
 
 namespace {
@@ -18,6 +21,16 @@ bool isGlobalTimeoutTriggered() {
   const uint64_t lastSuccess = network::getLastSuccessfulApiMs();
   return network::isWifiConnected() && (now - lastSuccess >= API_TIMEOUT_MS);
 }
+
+bool armingHoldComplete = false;
+uint32_t irWindowStartMs = 0;
+bool irWindowActive = false;
+
+void resetArmingFlow() {
+  armingHoldComplete = false;
+  irWindowActive = false;
+  irWindowStartMs = 0;
+}
 }
 
 FlameState getState() { return currentState; }
@@ -26,7 +39,7 @@ void setState(FlameState newState) {
   if (newState == currentState) {
     return;
   }
-#ifdef DEBUG
+#ifdef APP_DEBUG
   Serial.print("STATE: ");
   Serial.print(flameStateToString(currentState));
   Serial.print(" -> ");
@@ -39,7 +52,7 @@ void setState(FlameState newState) {
 void updateState() {
   // Apply global networking timeout rule first for all non-error states.
   if (currentState != ERROR_STATE && isGlobalTimeoutTriggered()) {
-#ifdef DEBUG
+#ifdef APP_DEBUG
     Serial.println("Global API timeout triggered; entering ERROR_STATE");
 #endif
     setState(ERROR_STATE);
@@ -84,18 +97,39 @@ void updateState() {
       // Hold timer continues; if released early, revert to ACTIVE.
       if (currentMatchStatus == WaitingOnStart || currentMatchStatus == Countdown ||
           currentMatchStatus == WaitingOnFinalData) {
+        resetArmingFlow();
+        stopButtonHold();
         setState(READY);
         break;
       }
 
       if (!armingHoldActive) {
+        resetArmingFlow();
         setState(ACTIVE);
         break;
       }
 
-      if (now - armingHoldStartMs >= BUTTON_HOLD_MS) {
-        setState(ARMED);
-        stopButtonHold();
+      if (!armingHoldComplete && (now - armingHoldStartMs >= BUTTON_HOLD_MS)) {
+        armingHoldComplete = true;
+        irWindowActive = true;
+        irWindowStartMs = now;
+        ui::showArmingConfirmPrompt();
+      }
+
+      if (irWindowActive) {
+        if (consumeIrConfirmation()) {
+          effects::startConfirmationBeep();
+          setState(ARMED);
+          resetArmingFlow();
+          stopButtonHold();
+          break;
+        }
+
+        if (now - irWindowStartMs >= IR_CONFIRM_WINDOW_MS) {
+          resetArmingFlow();
+          stopButtonHold();
+          setState(ACTIVE);
+        }
       }
       break;
 
@@ -142,6 +176,7 @@ void startButtonHold() {
 void stopButtonHold() {
   armingHoldActive = false;
   armingHoldStartMs = 0;
+  resetArmingFlow();
 }
 
 bool isButtonHoldActive() { return armingHoldActive; }
