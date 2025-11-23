@@ -196,14 +196,14 @@ void drawSegmentedTimer(const String &timerText, uint16_t timerColor) {
   tft.setTextSize(TIMER_TEXT_SIZE);
   tft.setTextColor(timerColor, BACKGROUND_COLOR);
 
-  const int16_t textHeight = TIMER_TEXT_SIZE * 8;
-  const int16_t secondsWidth = tft.textWidth(secondsWithColon, TIMER_TEXT_SIZE);
-  const int16_t centisecondsWidth = tft.textWidth(centisecondsPart, TIMER_TEXT_SIZE);
+  const int16_t textHeight = tft.fontHeight();
+  const int16_t secondsWidth = tft.textWidth(secondsWithColon);
+  const int16_t centisecondsWidth = tft.textWidth(centisecondsPart);
   const int16_t totalWidth = secondsWidth + centisecondsWidth;
   const int16_t startX = std::max<int16_t>(0, (tft.width() - totalWidth) / 2);
   const int16_t baseY = TIMER_Y - textHeight / 2;
 
-  if (layoutChanged) {
+  if (layoutChanged || centisecondsWidth != lastTimerCentisecondsWidth) {
     const int16_t previousTotalWidth = lastTimerSecondsWidth + lastTimerCentisecondsWidth;
     int16_t minStartX = startX;
     int16_t maxEndX = startX + totalWidth;
