@@ -37,7 +37,7 @@ struct ToneState {
   bool levelHigh = false;
 };
 
-ToneState tone;
+ToneState toneState;
 
 uint32_t colorToPixel(const RgbColor &c, float scale = 1.0f) {
   scale = constrain(scale, 0.0f, 1.0f);
@@ -67,27 +67,27 @@ void updateTone() {
   const uint32_t nowMs = millis();
   const uint32_t nowUs = micros();
 
-  if (!tone.active) {
+  if (!toneState.active) {
     return;
   }
 
-  if (nowMs >= tone.endMs) {
+  if (nowMs >= toneState.endMs) {
     dacWrite(AUDIO_PIN, 0);
     digitalWrite(AMP_ENABLE_PIN, HIGH);
-    tone.active = false;
+    toneState.active = false;
     return;
   }
 
-  if (tone.halfPeriodUs == 0) {
+  if (toneState.halfPeriodUs == 0) {
     return;
   }
 
-  if (nowUs - tone.lastToggleUs >= tone.halfPeriodUs) {
-    tone.lastToggleUs = nowUs;
-    tone.levelHigh = !tone.levelHigh;
-    const uint8_t amplitude = tone.volume / 2;
-    const uint8_t value = tone.levelHigh ? static_cast<uint8_t>(128 + amplitude)
-                                         : static_cast<uint8_t>(128 - amplitude);
+  if (nowUs - toneState.lastToggleUs >= toneState.halfPeriodUs) {
+    toneState.lastToggleUs = nowUs;
+    toneState.levelHigh = !toneState.levelHigh;
+    const uint8_t amplitude = toneState.volume / 2;
+    const uint8_t value = toneState.levelHigh ? static_cast<uint8_t>(128 + amplitude)
+                                              : static_cast<uint8_t>(128 - amplitude);
     dacWrite(AUDIO_PIN, value);
   }
 }
@@ -304,13 +304,13 @@ void playBeep(uint16_t frequencyHz, uint16_t durationMs, uint8_t volume) {
   if (frequencyHz == 0 || durationMs == 0) {
     return;
   }
-  tone.active = true;
-  tone.frequency = frequencyHz;
-  tone.endMs = millis() + durationMs;
-  tone.volume = volume;
-  tone.halfPeriodUs = frequencyHz > 0 ? static_cast<uint32_t>(500000UL / frequencyHz) : 0;
-  tone.lastToggleUs = micros();
-  tone.levelHigh = false;
+  toneState.active = true;
+  toneState.frequency = frequencyHz;
+  toneState.endMs = millis() + durationMs;
+  toneState.volume = volume;
+  toneState.halfPeriodUs = frequencyHz > 0 ? static_cast<uint32_t>(500000UL / frequencyHz) : 0;
+  toneState.lastToggleUs = micros();
+  toneState.levelHigh = false;
   digitalWrite(AMP_ENABLE_PIN, LOW);
 }
 }  // namespace effects
