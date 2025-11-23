@@ -20,6 +20,8 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
 
 // Helper to format a millisecond value into MM:SS (zero-padded) for on-screen display.
 void formatTimeMMSS(uint32_t ms, char *buffer, size_t len);
+// Helper to format a millisecond value into SS:MM (zero-padded) for bomb timer display.
+void formatTimeSSMM(uint32_t ms, char *buffer, size_t len);
 
 // Placeholder UI lifecycle hooks for future expansion.
 void initUI();

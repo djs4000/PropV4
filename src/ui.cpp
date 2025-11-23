@@ -1,6 +1,7 @@
 #include "ui.h"
 
 #include <TFT_eSPI.h>
+#include <algorithm>
 #include <cmath>
 
 #include "network.h"
@@ -10,6 +11,9 @@ namespace {
 constexpr uint8_t BACKLIGHT_PIN = 21;
 constexpr uint16_t BACKGROUND_COLOR = TFT_BLACK;
 constexpr uint16_t FOREGROUND_COLOR = TFT_WHITE;
+constexpr uint16_t DEFUSED_COLOR = TFT_GREEN;
+constexpr uint16_t DETONATED_BG_COLOR = TFT_RED;
+constexpr uint16_t DETONATED_TEXT_COLOR = TFT_BLACK;
 
 // Layout constants tuned for a 240x320 portrait canvas (rotation 0).
 constexpr uint8_t TITLE_TEXT_SIZE = 2;
@@ -23,6 +27,7 @@ constexpr int16_t STATUS_CLEAR_HEIGHT = STATUS_TEXT_SIZE * 8 + 10 + STATUS_CLEAR
 // Shifted downward to keep the title fully visible and better use the canvas height.
 constexpr int16_t TITLE_Y = 20;
 constexpr int16_t TIMER_Y = 80;
+constexpr int16_t TIMER_CLEAR_HEIGHT = 48;
 constexpr int16_t STATUS_Y = 150;
 constexpr int16_t BAR_Y = 185;
 constexpr int16_t BAR_WIDTH = 200;
@@ -45,6 +50,16 @@ uint32_t lastArmingBarUpdateMs = 0;
 float lastArmingProgress = -1.0f;
 uint8_t lastCodeLength = 0;
 bool renderCacheInvalidated = true;
+String lastDebugTimerText;
+String lastDebugMatchText;
+String lastDebugIpText;
+uint16_t lastTimerColor = FOREGROUND_COLOR;
+uint16_t lastStatusColor = FOREGROUND_COLOR;
+String lastTimerSecondsText;
+String lastTimerCentisecondsText;
+int16_t lastTimerStartX = -1;
+int16_t lastTimerSecondsWidth = 0;
+int16_t lastTimerCentisecondsWidth = 0;
 
 String lastBootWifiLine;
 String lastBootStatusLine;
@@ -126,6 +141,7 @@ void drawStaticLayout() {
   }
 
   tft.fillScreen(BACKGROUND_COLOR);
+  tft.setTextColor(FOREGROUND_COLOR, BACKGROUND_COLOR);
 
   // Title
   tft.setTextDatum(TC_DATUM);
@@ -140,9 +156,11 @@ void drawStaticLayout() {
   layoutDrawn = true;
 }
 
-void drawCenteredText(const String &text, int16_t y, uint8_t textSize, int16_t clearHeight) {
+void drawCenteredText(const String &text, int16_t y, uint8_t textSize, int16_t clearHeight,
+                     uint16_t color = FOREGROUND_COLOR) {
   tft.setTextDatum(TC_DATUM);
   tft.setTextSize(textSize);
+  tft.setTextColor(color, BACKGROUND_COLOR);
   const int16_t clearY = y - clearHeight / 2;
   tft.fillRect(0, clearY, tft.width(), clearHeight, BACKGROUND_COLOR);
   tft.drawString(text, tft.width() / 2, y);
@@ -153,11 +171,80 @@ void clearStatusArea() {
   tft.fillRect(0, clearY, tft.width(), STATUS_CLEAR_HEIGHT, BACKGROUND_COLOR);
 }
 
-void drawStatusLine(const String &text) {
+void drawStatusLine(const String &text, uint16_t color = FOREGROUND_COLOR) {
   tft.setTextDatum(TC_DATUM);
   tft.setTextSize(STATUS_TEXT_SIZE);
+  tft.setTextColor(color, BACKGROUND_COLOR);
   clearStatusArea();
   tft.drawString(text, tft.width() / 2, STATUS_Y);
+}
+
+void drawSegmentedTimer(const String &timerText, uint16_t timerColor) {
+  const int colonIndex = timerText.indexOf(':');
+  const String secondsPart = (colonIndex >= 0) ? timerText.substring(0, colonIndex) : timerText;
+  const String centisecondsPart = (colonIndex >= 0 && colonIndex + 1 < timerText.length())
+                                      ? timerText.substring(colonIndex + 1)
+                                      : String("");
+  const String secondsWithColon = secondsPart + ":";
+
+  const bool colorChanged = (timerColor != lastTimerColor);
+  const bool secondsChanged = (secondsPart != lastTimerSecondsText);
+  const bool centisecondsChanged = (centisecondsPart != lastTimerCentisecondsText);
+
+  // Force a full redraw if layout anchors are unknown so the timer recenters.
+  const bool layoutChanged = colorChanged || secondsChanged || lastTimerStartX < 0;
+
+  if (!colorChanged && !secondsChanged && !centisecondsChanged) {
+    return;
+  }
+
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextSize(TIMER_TEXT_SIZE);
+  tft.setTextColor(timerColor, BACKGROUND_COLOR);
+
+  const int16_t textHeight = tft.fontHeight();
+  const int16_t secondsWidth = tft.textWidth(secondsWithColon);
+  const int16_t centisecondsWidth = tft.textWidth(centisecondsPart);
+  const int16_t totalWidth = secondsWidth + centisecondsWidth;
+  const int16_t startX = std::max<int16_t>(0, (tft.width() - totalWidth) / 2);
+  const int16_t baseY = TIMER_Y - textHeight / 2;
+
+  if (layoutChanged || centisecondsWidth != lastTimerCentisecondsWidth) {
+    const int16_t previousTotalWidth = lastTimerSecondsWidth + lastTimerCentisecondsWidth;
+    int16_t minStartX = startX;
+    int16_t maxEndX = startX + totalWidth;
+    if (lastTimerStartX >= 0) {
+      minStartX = std::min(minStartX, lastTimerStartX);
+      maxEndX = std::max<int16_t>(maxEndX, lastTimerStartX + previousTotalWidth);
+    }
+
+    const int16_t clearX = std::max<int16_t>(0, minStartX);
+    const int16_t clearWidth = std::min<int16_t>(tft.width() - clearX, maxEndX - minStartX);
+    const int16_t clearY = TIMER_Y - TIMER_CLEAR_HEIGHT / 2;
+
+    tft.fillRect(clearX, clearY, clearWidth, TIMER_CLEAR_HEIGHT, BACKGROUND_COLOR);
+    tft.drawString(secondsWithColon, startX, baseY);
+    tft.drawString(centisecondsPart, startX + secondsWidth, baseY);
+
+    lastTimerStartX = startX;
+    lastTimerSecondsWidth = secondsWidth;
+    lastTimerCentisecondsWidth = centisecondsWidth;
+  } else if (centisecondsChanged) {
+    const int16_t clearHeight = TIMER_CLEAR_HEIGHT;
+    const int16_t clearY = TIMER_Y - clearHeight / 2;
+    const int16_t centisecondsX = lastTimerStartX + lastTimerSecondsWidth;
+    const int16_t clearWidth = std::max<int16_t>(centisecondsWidth, lastTimerCentisecondsWidth);
+    const int16_t combinedWidth = lastTimerSecondsWidth + clearWidth;
+    tft.fillRect(lastTimerStartX, clearY, combinedWidth, clearHeight, BACKGROUND_COLOR);
+    tft.drawString(secondsWithColon, lastTimerStartX, baseY);
+    tft.drawString(centisecondsPart, centisecondsX, baseY);
+    lastTimerCentisecondsWidth = centisecondsWidth;
+  }
+
+  lastTimerSecondsText = secondsPart;
+  lastTimerCentisecondsText = centisecondsPart;
+  lastTimerColor = timerColor;
+  lastTimerText = timerText;
 }
 }  // namespace
 
@@ -173,6 +260,18 @@ void formatTimeMMSS(uint32_t ms, char *buffer, size_t len) {
 
   // Display as MM:SS (minutes first, then seconds) to match the requested format.
   snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(minutes), static_cast<unsigned>(seconds));
+}
+
+void formatTimeSSMM(uint32_t ms, char *buffer, size_t len) {
+  if (len == 0 || buffer == nullptr) {
+    return;
+  }
+
+  const uint32_t totalSeconds = ms / 1000;
+  const uint32_t centiseconds = (ms % 1000) / 10;
+
+  // Bomb timer uses SS:cc (seconds first, then centiseconds) per UI request.
+  snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(totalSeconds), static_cast<unsigned>(centiseconds));
 }
 
 void renderBootScreen(const String &wifiSsid, bool wifiConnected, bool wifiFailed,
@@ -225,6 +324,26 @@ void initMainScreen() {
 void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs, float armingProgress01,
                  uint8_t codeLength, uint8_t /*enteredDigits*/) {
   ensureDisplayReady();
+
+  if (state == DETONATED) {
+    if (lastRenderedState != DETONATED) {
+      layoutDrawn = false;
+      renderCacheInvalidated = true;
+      tft.fillScreen(DETONATED_BG_COLOR);
+      tft.setTextDatum(TC_DATUM);
+      tft.setTextSize(TIMER_TEXT_SIZE - 1);
+      tft.setTextColor(DETONATED_TEXT_COLOR, DETONATED_BG_COLOR);
+      tft.drawString("DETONATED", tft.width() / 2, tft.height() / 2);
+    }
+    lastRenderedState = state;
+    return;
+  }
+
+  if (lastRenderedState == DETONATED && state != DETONATED) {
+    tft.fillScreen(BACKGROUND_COLOR);
+    layoutDrawn = false;
+    renderCacheInvalidated = true;
+  }
   drawStaticLayout();
 
   // If the layout was reinitialized (e.g., after leaving config mode), drop the
@@ -237,25 +356,49 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     lastArmingProgress = -1.0f;
     lastCodeLength = 0;
     lastRenderedState = ON;
+    lastDebugTimerText = "";
+    lastDebugMatchText = "";
+    lastDebugIpText = "";
+    lastTimerColor = FOREGROUND_COLOR;
+    lastStatusColor = FOREGROUND_COLOR;
+    lastTimerSecondsText = "";
+    lastTimerCentisecondsText = "";
+    lastTimerStartX = -1;
+    lastTimerSecondsWidth = 0;
+    lastTimerCentisecondsWidth = 0;
     renderCacheInvalidated = false;
   }
 
   // Timer
+  const bool bombTimerExpired = (state == DETONATED) && (getBombTimerRemainingMs() == 0);
+  const bool bombTimerHeld = (state == DEFUSED);
+  const bool bombTimerDisplay = ((state == ARMED) && isBombTimerActive()) || bombTimerExpired || bombTimerHeld;
+  uint32_t timerSource = 0;
+  uint16_t timerColor = (state == DEFUSED) ? DEFUSED_COLOR : FOREGROUND_COLOR;
+
   char timeBuffer[8] = {0};
-  const uint32_t timerSource = (remainingMs == 0) ? bombDurationMs : remainingMs;
-  formatTimeMMSS(timerSource, timeBuffer, sizeof(timeBuffer));
-  const String timerText = String(timeBuffer);
-  if (timerText != lastTimerText) {
-    drawCenteredText(timerText, TIMER_Y, TIMER_TEXT_SIZE, 48);
-    lastTimerText = timerText;
+  if (bombTimerDisplay) {
+    timerSource = getBombTimerRemainingMs();
+    if (state != DEFUSED && timerSource <= 10000) {
+      timerColor = TFT_RED;
+    }
+  } else {
+    timerSource = bombDurationMs;
   }
+
+  formatTimeSSMM(timerSource, timeBuffer, sizeof(timeBuffer));
+
+  const String timerText = String(timeBuffer);
+  drawSegmentedTimer(timerText, timerColor);
 
   // Status line
   String statusText = "Status: ";
   statusText += flameStateToString(state);
-  if (statusText != lastStatusText) {
-    drawStatusLine(statusText);
+  const uint16_t statusColor = (state == DEFUSED) ? DEFUSED_COLOR : FOREGROUND_COLOR;
+  if (statusText != lastStatusText || statusColor != lastStatusColor) {
+    drawStatusLine(statusText, statusColor);
     lastStatusText = statusText;
+    lastStatusColor = statusColor;
   }
 
   // Progress bar fill (only visible during arming, empty otherwise)
@@ -306,27 +449,34 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   // Two-line debug overlay along the bottom of the screen.
   const int16_t debugHeight = 22;
   const int16_t debugY = tft.height() - debugHeight;
-  tft.fillRect(0, debugY, tft.width(), debugHeight, BACKGROUND_COLOR);
-  tft.setTextSize(1);
   const String ipOverlay = "IP: " + network::getWifiIpString();
   const String matchOverlay = String("Match ") + matchStatusToString(network::getRemoteMatchStatus());
-  char apiTimerBuffer[8] = {0};
-  if (network::hasReceivedApiResponse()) {
-    formatTimeMMSS(network::getRemoteRemainingTimeMs(), apiTimerBuffer, sizeof(apiTimerBuffer));
+  char gameTimerBuffer[8] = {0};
+  if (isGameTimerValid()) {
+    formatTimeMMSS(getGameTimerRemainingMs(), gameTimerBuffer, sizeof(gameTimerBuffer));
   } else {
-    snprintf(apiTimerBuffer, sizeof(apiTimerBuffer), "--:--");
+    snprintf(gameTimerBuffer, sizeof(gameTimerBuffer), "--:--");
   }
-  const String timerOverlay = String("T ") + String(apiTimerBuffer);
+  const String timerOverlay = String("T ") + String(gameTimerBuffer);
 
-  // Match status on the upper line.
-  tft.setTextDatum(TL_DATUM);
-  tft.drawString(matchOverlay, 2, debugY + 2);
+  if (ipOverlay != lastDebugIpText || matchOverlay != lastDebugMatchText || timerOverlay != lastDebugTimerText) {
+    tft.fillRect(0, debugY, tft.width(), debugHeight, BACKGROUND_COLOR);
+    tft.setTextSize(1);
 
-  // IP on the bottom-left, timer on the bottom-right.
-  tft.setTextDatum(BL_DATUM);
-  tft.drawString(ipOverlay, 2, tft.height() - 2);
-  tft.setTextDatum(BR_DATUM);
-  tft.drawString(timerOverlay, tft.width() - 2, tft.height() - 2);
+    // Match status on the upper line.
+    tft.setTextDatum(TL_DATUM);
+    tft.drawString(matchOverlay, 2, debugY + 2);
+
+    // IP on the bottom-left, timer on the bottom-right.
+    tft.setTextDatum(BL_DATUM);
+    tft.drawString(ipOverlay, 2, tft.height() - 2);
+    tft.setTextDatum(BR_DATUM);
+    tft.drawString(timerOverlay, tft.width() - 2, tft.height() - 2);
+
+    lastDebugIpText = ipOverlay;
+    lastDebugMatchText = matchOverlay;
+    lastDebugTimerText = timerOverlay;
+  }
 #endif
 
   lastRenderedState = state;

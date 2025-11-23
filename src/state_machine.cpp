@@ -10,7 +10,17 @@
 namespace {
 FlameState currentState = ON;
 MatchStatus currentMatchStatus = WaitingOnStart;
-uint32_t armedTimerMs = DEFAULT_BOMB_DURATION_MS;
+
+// Game timer derived from API with local backup countdown when responses pause.
+bool gameTimerValid = false;
+uint32_t gameTimerRemainingMs = 0;
+uint32_t gameTimerLastUpdateMs = 0;
+
+// Bomb timer that begins when the device enters ARMED.
+bool bombTimerActive = false;
+uint32_t bombTimerDurationMs = 0;
+uint32_t bombTimerRemainingMs = 0;
+uint32_t bombTimerLastUpdateMs = 0;
 
 // Tracks how long both buttons have been held during ARMING/ERROR recovery.
 uint32_t armingHoldStartMs = 0;
@@ -31,6 +41,70 @@ void resetArmingFlow() {
   irWindowActive = false;
   irWindowStartMs = 0;
 }
+
+bool isGameTimerCountdownAllowed() {
+  return currentState == ACTIVE || currentState == ARMING || currentState == ARMED;
+}
+
+void updateGameTimerCountdown() {
+  if (!gameTimerValid) {
+    return;
+  }
+
+  if (!isGameTimerCountdownAllowed()) {
+    gameTimerLastUpdateMs = millis();
+    return;
+  }
+
+  const uint32_t now = millis();
+  const uint32_t delta = now - gameTimerLastUpdateMs;
+  gameTimerLastUpdateMs = now;
+
+  if (delta == 0 || gameTimerRemainingMs == 0) {
+    return;
+  }
+
+  if (delta >= gameTimerRemainingMs) {
+    gameTimerRemainingMs = 0;
+  } else {
+    gameTimerRemainingMs -= delta;
+  }
+}
+
+void updateBombTimerCountdown() {
+  if (!bombTimerActive) {
+    return;
+  }
+
+  if (currentState != ARMED) {
+    bombTimerActive = false;
+    return;
+  }
+
+  const uint32_t now = millis();
+  const uint32_t delta = now - bombTimerLastUpdateMs;
+  bombTimerLastUpdateMs = now;
+
+  if (delta == 0 || bombTimerRemainingMs == 0) {
+    return;
+  }
+
+  if (delta >= bombTimerRemainingMs) {
+    bombTimerRemainingMs = 0;
+  } else {
+    bombTimerRemainingMs -= delta;
+  }
+
+  if (bombTimerRemainingMs == 0 && currentState == ARMED) {
+    bombTimerActive = false;
+    setState(DETONATED);
+  }
+}
+
+void updateTimers() {
+  updateGameTimerCountdown();
+  updateBombTimerCountdown();
+}
 }
 
 FlameState getState() { return currentState; }
@@ -39,6 +113,7 @@ void setState(FlameState newState) {
   if (newState == currentState) {
     return;
   }
+  const FlameState oldState = currentState;
 #ifdef APP_DEBUG
   Serial.print("STATE: ");
   Serial.print(flameStateToString(currentState));
@@ -46,7 +121,21 @@ void setState(FlameState newState) {
   Serial.println(flameStateToString(newState));
 #endif
   currentState = newState;
-  // Future: trigger effects/UI hooks here.
+  // Timer lifecycle hooks based on state transitions.
+  if (newState == ARMED && oldState != ARMED) {
+    bombTimerActive = true;
+    bombTimerDurationMs = network::getConfiguredBombDurationMs();
+    if (bombTimerDurationMs == 0) {
+      bombTimerDurationMs = DEFAULT_BOMB_DURATION_MS;
+    }
+    bombTimerRemainingMs = bombTimerDurationMs;
+    bombTimerLastUpdateMs = millis();
+  } else if (oldState == ARMED && newState != ARMED) {
+    bombTimerActive = false;
+    if (newState != DEFUSED) {
+      bombTimerRemainingMs = 0;
+    }
+  }
 }
 
 void updateState() {
@@ -69,6 +158,12 @@ void updateState() {
   // Placeholder button handling: actual input module will call into the state
   // machine to start/stop arming. For now we maintain stub timing logic to
   // illustrate the non-blocking pattern without implementing hardware reads.
+  const FlameState startingState = currentState;
+  updateTimers();
+  if (currentState != startingState) {
+    return;  // A timer transition changed state; defer additional logic until next tick.
+  }
+
   const uint32_t now = millis();
 
   switch (currentState) {
@@ -134,10 +229,6 @@ void updateState() {
       break;
 
     case ARMED:
-      // Countdown placeholder. Actual timing will be integrated with inputs/effects.
-      if (armedTimerMs == 0) {
-        setState(DETONATED);
-      }
       if (currentMatchStatus == Completed || currentMatchStatus == Cancelled) {
         setState(READY);
       }
@@ -187,9 +278,21 @@ void setMatchStatus(MatchStatus status) { currentMatchStatus = status; }
 
 MatchStatus getMatchStatus() { return currentMatchStatus; }
 
-void setArmedTimerMs(uint32_t remainingMs) { armedTimerMs = remainingMs; }
+void updateGameTimerFromApi(uint32_t remainingMs) {
+  gameTimerValid = true;
+  gameTimerRemainingMs = remainingMs;
+  gameTimerLastUpdateMs = millis();
+}
 
-uint32_t getArmedTimerMs() { return armedTimerMs; }
+bool isGameTimerValid() { return gameTimerValid; }
+
+uint32_t getGameTimerRemainingMs() { return gameTimerRemainingMs; }
+
+bool isBombTimerActive() { return bombTimerActive; }
+
+uint32_t getBombTimerRemainingMs() { return bombTimerRemainingMs; }
+
+uint32_t getBombTimerDurationMs() { return bombTimerDurationMs; }
 
 const char *flameStateToString(FlameState state) {
   switch (state) {

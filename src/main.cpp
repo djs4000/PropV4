@@ -16,6 +16,7 @@ static uint32_t configuredBombDurationMs = DEFAULT_BOMB_DURATION_MS;
 static bool mainScreenInitialized = false;
 static FlameState lastRenderedState = ON;
 static uint32_t lastRenderedRemainingMs = 0;
+static uint32_t lastRenderedRemainingCs = 0;
 static float lastRenderedArmingProgress = -1.0f;
 static bool configScreenRendered = false;
 
@@ -40,7 +41,16 @@ static void renderMainUiIfNeeded(FlameState state) {
     armingProgress = static_cast<float>(elapsed) / static_cast<float>(BUTTON_HOLD_MS);
     armingProgress = constrain(armingProgress, 0.0f, 1.0f);
   }
-  const uint32_t remainingMs = configuredBombDurationMs;  // Countdown hook will update this later.
+  uint32_t remainingMs = configuredBombDurationMs;
+  if (state == ARMED && isBombTimerActive()) {
+    remainingMs = getBombTimerRemainingMs();
+  } else if (isGameTimerValid()) {
+    remainingMs = getGameTimerRemainingMs();
+  }
+  const uint32_t remainingSeconds = remainingMs / 1000;
+  const uint32_t lastRenderedSeconds = lastRenderedRemainingMs / 1000;
+  const uint32_t remainingCentiseconds = remainingMs / 10;
+  const uint32_t lastRenderedCentiseconds = lastRenderedRemainingCs;
 
   bool shouldRender = false;
 
@@ -54,7 +64,12 @@ static void renderMainUiIfNeeded(FlameState state) {
     return;
   }
 
-  if (state != lastRenderedState || remainingMs != lastRenderedRemainingMs ||
+  const bool centisecondChangedEnough = state == ARMED && isBombTimerActive() &&
+                                        (remainingCentiseconds > lastRenderedCentiseconds ?
+                                             (remainingCentiseconds - lastRenderedCentiseconds) >= 5 :
+                                             (lastRenderedCentiseconds - remainingCentiseconds) >= 5);
+
+  if (state != lastRenderedState || remainingSeconds != lastRenderedSeconds || centisecondChangedEnough ||
       armingProgress != lastRenderedArmingProgress) {
     shouldRender = true;
   }
@@ -65,6 +80,7 @@ static void renderMainUiIfNeeded(FlameState state) {
                     enteredDigits);
     lastRenderedState = state;
     lastRenderedRemainingMs = remainingMs;
+    lastRenderedRemainingCs = remainingCentiseconds;
     lastRenderedArmingProgress = armingProgress;
   }
 }

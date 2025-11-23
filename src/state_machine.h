@@ -33,9 +33,15 @@ void updateState();
 void setMatchStatus(MatchStatus status);
 MatchStatus getMatchStatus();
 
-// Timer helpers for ARMED countdown (placeholder for later implementation)
-void setArmedTimerMs(uint32_t remainingMs);
-uint32_t getArmedTimerMs();
+// Game timer synchronization (authoritative data from API with local backup countdown).
+void updateGameTimerFromApi(uint32_t remainingMs);
+bool isGameTimerValid();
+uint32_t getGameTimerRemainingMs();
+
+// Bomb timer helpers for ARMED countdown.
+bool isBombTimerActive();
+uint32_t getBombTimerRemainingMs();
+uint32_t getBombTimerDurationMs();
 
 // Button hold helpers (driven by inputs module)
 void startButtonHold();
