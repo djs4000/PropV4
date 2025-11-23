@@ -310,9 +310,15 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   tft.setTextDatum(BL_DATUM);
   tft.setTextSize(1);
   const String ipOverlay = "IP: " + network::getWifiIpString();
-  const String statusOverlay = flameStateToString(state);
-  const String timerOverlay = String("T ") + timerText;
-  const String debugLine = ipOverlay + " | " + statusOverlay + " | " + timerOverlay;
+  const String matchOverlay = String("Match ") + matchStatusToString(network::getRemoteMatchStatus());
+  char apiTimerBuffer[8] = {0};
+  if (network::hasReceivedApiResponse()) {
+    formatTimeMMSS(network::getRemoteRemainingTimeMs(), apiTimerBuffer, sizeof(apiTimerBuffer));
+  } else {
+    snprintf(apiTimerBuffer, sizeof(apiTimerBuffer), "--:--");
+  }
+  const String timerOverlay = String("T ") + String(apiTimerBuffer);
+  const String debugLine = ipOverlay + " | " + matchOverlay + " | " + timerOverlay;
   tft.drawString(debugLine, 2, tft.height() - 2);
 #endif
 
