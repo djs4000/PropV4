@@ -300,7 +300,8 @@ void updateApi() {
   // Keep outbound state/timer in sync with the current state machine status.
   outboundState = getState();
 
-  DynamicJsonDocument doc(128);
+  JsonDocument doc;
+  doc.allocate(128);
   doc["state"] = flameStateToString(outboundState);
   doc["timer"] = outboundTimerMs;  // Placeholder until real timers are wired up.
   doc["timestamp"] = 0;           // Placeholder; real clock will be integrated later.
@@ -354,7 +355,8 @@ void updateApi() {
   // FullOnline mode: enforce strict success + JSON parsing.
   if (httpCode == HTTP_CODE_OK) {
     const String response = http.getString();
-    DynamicJsonDocument respDoc(256);
+    JsonDocument respDoc;
+    respDoc.allocate(256);
     const DeserializationError err = deserializeJson(respDoc, response);
     if (!err) {
       const char *statusStr = respDoc["status"];
