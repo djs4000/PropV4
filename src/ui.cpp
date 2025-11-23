@@ -2,6 +2,7 @@
 
 #include <TFT_eSPI.h>
 #include <algorithm>
+#include <climits>
 #include <cmath>
 
 #include "network.h"
@@ -60,6 +61,8 @@ String lastTimerCentisecondsText;
 int16_t lastTimerStartX = -1;
 int16_t lastTimerSecondsWidth = 0;
 int16_t lastTimerCentisecondsWidth = 0;
+uint32_t lastTimerRedrawMs = 0;
+uint32_t lastShownCentiseconds = UINT32_MAX;
 
 String lastBootWifiLine;
 String lastBootStatusLine;
@@ -325,6 +328,8 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
                  uint8_t codeLength, uint8_t /*enteredDigits*/) {
   ensureDisplayReady();
 
+  const uint32_t now = millis();
+
   if (state == DETONATED) {
     if (lastRenderedState != DETONATED) {
       layoutDrawn = false;
@@ -366,6 +371,8 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     lastTimerStartX = -1;
     lastTimerSecondsWidth = 0;
     lastTimerCentisecondsWidth = 0;
+    lastTimerRedrawMs = 0;
+    lastShownCentiseconds = UINT32_MAX;
     renderCacheInvalidated = false;
   }
 
@@ -376,7 +383,6 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   uint32_t timerSource = 0;
   uint16_t timerColor = (state == DEFUSED) ? DEFUSED_COLOR : FOREGROUND_COLOR;
 
-  char timeBuffer[8] = {0};
   if (bombTimerDisplay) {
     timerSource = getBombTimerRemainingMs();
     if (state != DEFUSED && timerSource <= 10000) {
@@ -386,10 +392,19 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     timerSource = bombDurationMs;
   }
 
-  formatTimeSSMM(timerSource, timeBuffer, sizeof(timeBuffer));
+  const uint32_t currentCentiseconds = timerSource / 10;
+  const bool intervalElapsed = (now - lastTimerRedrawMs) >= 150;
+  const bool timerChanged = (currentCentiseconds != lastShownCentiseconds) || (timerColor != lastTimerColor) ||
+                            renderCacheInvalidated;
 
-  const String timerText = String(timeBuffer);
-  drawSegmentedTimer(timerText, timerColor);
+  if (timerChanged || intervalElapsed) {
+    char timeBuffer[8] = {0};
+    formatTimeSSMM(timerSource, timeBuffer, sizeof(timeBuffer));
+    const String timerText = String(timeBuffer);
+    drawSegmentedTimer(timerText, timerColor);
+    lastTimerRedrawMs = now;
+    lastShownCentiseconds = currentCentiseconds;
+  }
 
   // Status line
   String statusText = "Status: ";
@@ -405,7 +420,6 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   const float clampedProgress = (state == ARMING) ? constrain(armingProgress01, 0.0f, 1.0f) : 0.0f;
   const int16_t innerWidth = BAR_WIDTH - 2 * BAR_BORDER;
   const int16_t fillWidth = static_cast<int16_t>(innerWidth * clampedProgress);
-  const uint32_t now = millis();
   const bool progressChanged = std::fabs(clampedProgress - lastArmingProgress) >= 0.01f;
   const bool timeElapsed = (now - lastArmingBarUpdateMs) >= ARMING_BAR_FRAME_INTERVAL_MS;
   const bool stateChanged = (state != lastRenderedState);

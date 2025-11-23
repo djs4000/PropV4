@@ -40,6 +40,6 @@ void updateApi();
 
 // SoftAP configuration portal used when WiFi station connection fails.
 void beginConfigPortal();
-void updateConfigPortal();
+void updateConfigPortal(uint32_t now, FlameState state);
 
 }  // namespace network
