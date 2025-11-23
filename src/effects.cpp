@@ -11,6 +11,8 @@ constexpr uint8_t LED_PIN = 19;
 constexpr uint8_t LED_BRIGHTNESS = 80;
 constexpr uint8_t AMP_ENABLE_PIN = 4;  // LOW = enable
 constexpr uint8_t AUDIO_PIN = 26;       // DAC output
+constexpr uint8_t AUDIO_CHANNEL = 0;
+constexpr uint8_t AUDIO_RES_BITS = 8;
 
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -32,9 +34,6 @@ struct ToneState {
   uint16_t frequency = 0;
   uint32_t endMs = 0;
   uint8_t volume = 0;
-  uint32_t halfPeriodUs = 0;
-  uint32_t lastToggleUs = 0;
-  bool levelHigh = false;
 };
 
 ToneState toneState;
@@ -65,30 +64,17 @@ uint16_t mapRowColToIndex(uint8_t row, uint8_t col) {
 
 void updateTone() {
   const uint32_t nowMs = millis();
-  const uint32_t nowUs = micros();
 
   if (!toneState.active) {
     return;
   }
 
   if (nowMs >= toneState.endMs) {
-    dacWrite(AUDIO_PIN, 0);
+    ledcWriteTone(AUDIO_CHANNEL, 0);
+    ledcWrite(AUDIO_CHANNEL, 0);
     digitalWrite(AMP_ENABLE_PIN, HIGH);
     toneState.active = false;
     return;
-  }
-
-  if (toneState.halfPeriodUs == 0) {
-    return;
-  }
-
-  if (nowUs - toneState.lastToggleUs >= toneState.halfPeriodUs) {
-    toneState.lastToggleUs = nowUs;
-    toneState.levelHigh = !toneState.levelHigh;
-    const uint8_t amplitude = toneState.volume / 2;
-    const uint8_t value = toneState.levelHigh ? static_cast<uint8_t>(128 + amplitude)
-                                              : static_cast<uint8_t>(128 - amplitude);
-    dacWrite(AUDIO_PIN, value);
   }
 }
 
@@ -216,7 +202,10 @@ void init() {
 
   pinMode(AMP_ENABLE_PIN, OUTPUT);
   digitalWrite(AMP_ENABLE_PIN, HIGH);
-  dacWrite(AUDIO_PIN, 0);
+  ledcSetup(AUDIO_CHANNEL, 1000, AUDIO_RES_BITS);
+  ledcAttachPin(AUDIO_PIN, AUDIO_CHANNEL);
+  ledcWriteTone(AUDIO_CHANNEL, 0);
+  ledcWrite(AUDIO_CHANNEL, 0);
 }
 
 void update() {
@@ -307,10 +296,9 @@ void playBeep(uint16_t frequencyHz, uint16_t durationMs, uint8_t volume) {
   toneState.active = true;
   toneState.frequency = frequencyHz;
   toneState.endMs = millis() + durationMs;
-  toneState.volume = volume;
-  toneState.halfPeriodUs = frequencyHz > 0 ? static_cast<uint32_t>(500000UL / frequencyHz) : 0;
-  toneState.lastToggleUs = micros();
-  toneState.levelHigh = false;
+  toneState.volume = constrain(volume, static_cast<uint8_t>(0), static_cast<uint8_t>(255));
+  ledcWriteTone(AUDIO_CHANNEL, toneState.frequency);
+  ledcWrite(AUDIO_CHANNEL, toneState.volume);
   digitalWrite(AMP_ENABLE_PIN, LOW);
 }
 }  // namespace effects
