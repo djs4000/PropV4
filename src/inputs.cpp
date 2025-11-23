@@ -7,6 +7,7 @@
 #include <Wire.h>
 #include <cstring>
 
+#include "effects.h"
 #include "game_config.h"
 #include "network.h"
 #include "state_machine.h"
@@ -206,6 +207,7 @@ void updateInputs() {
     }
 #endif
     if (debouncedKey >= '0' && debouncedKey <= '9') {
+      effects::onKeypadKey();
       handleDigitPress(debouncedKey);
     }
   }

@@ -64,6 +64,8 @@ static void renderMainUiIfNeeded(FlameState state) {
     return;
   }
 
+  effects::setArmingProgress(armingProgress);
+
   const bool centisecondChangedEnough = state == ARMED && isBombTimerActive() &&
                                         (remainingCentiseconds > lastRenderedCentiseconds ?
                                              (remainingCentiseconds - lastRenderedCentiseconds) >= 5 :
@@ -149,9 +151,8 @@ void setup() {
   // Initial state on boot
   setState(ON);
 
-  effects::initEffects();
-  effects::startStartupTest();
-  effects::startStartupBeep();
+  effects::init();
+  effects::onBoot();
 
   initInputs();
   ui::initUI();
@@ -167,8 +168,8 @@ void loop() {
 
   updateInputs();
 
-  // Startup hardware self-checks (LEDs + audio) remain non-blocking via effects::updateEffects().
-  effects::updateEffects();
+  // Startup hardware self-checks (LEDs + audio) remain non-blocking via effects::update().
+  effects::update();
 
   renderBootScreenIfNeeded();
 

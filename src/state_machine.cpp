@@ -136,6 +136,8 @@ void setState(FlameState newState) {
       bombTimerRemainingMs = 0;
     }
   }
+
+  effects::onStateChanged(oldState, newState);
 }
 
 void updateState() {
@@ -213,7 +215,7 @@ void updateState() {
 
       if (irWindowActive) {
         if (consumeIrConfirmation()) {
-          effects::startConfirmationBeep();
+          effects::onArmingConfirmed();
           setState(ARMED);
           resetArmingFlow();
           stopButtonHold();
