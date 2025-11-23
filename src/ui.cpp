@@ -48,6 +48,7 @@ bool renderCacheInvalidated = true;
 String lastDebugTimerText;
 String lastDebugMatchText;
 String lastDebugIpText;
+uint16_t lastTimerColor = FOREGROUND_COLOR;
 
 String lastBootWifiLine;
 String lastBootStatusLine;
@@ -143,9 +144,11 @@ void drawStaticLayout() {
   layoutDrawn = true;
 }
 
-void drawCenteredText(const String &text, int16_t y, uint8_t textSize, int16_t clearHeight) {
+void drawCenteredText(const String &text, int16_t y, uint8_t textSize, int16_t clearHeight,
+                     uint16_t color = FOREGROUND_COLOR) {
   tft.setTextDatum(TC_DATUM);
   tft.setTextSize(textSize);
+  tft.setTextColor(color, BACKGROUND_COLOR);
   const int16_t clearY = y - clearHeight / 2;
   tft.fillRect(0, clearY, tft.width(), clearHeight, BACKGROUND_COLOR);
   tft.drawString(text, tft.width() / 2, y);
@@ -176,6 +179,19 @@ void formatTimeMMSS(uint32_t ms, char *buffer, size_t len) {
 
   // Display as MM:SS (minutes first, then seconds) to match the requested format.
   snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(minutes), static_cast<unsigned>(seconds));
+}
+
+void formatTimeSSMM(uint32_t ms, char *buffer, size_t len) {
+  if (len == 0 || buffer == nullptr) {
+    return;
+  }
+
+  const uint32_t totalSeconds = ms / 1000;
+  const uint32_t minutes = totalSeconds / 60;
+  const uint32_t seconds = totalSeconds % 60;
+
+  // Bomb timer uses SS:MM (seconds first) per UI request.
+  snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(seconds), static_cast<unsigned>(minutes));
 }
 
 void renderBootScreen(const String &wifiSsid, bool wifiConnected, bool wifiFailed,
@@ -243,28 +259,35 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     lastDebugTimerText = "";
     lastDebugMatchText = "";
     lastDebugIpText = "";
+    lastTimerColor = FOREGROUND_COLOR;
     renderCacheInvalidated = false;
   }
 
   // Timer
-  const bool bombTimerActive = (state == ARMED) && isBombTimerActive();
+  const bool bombTimerExpired = (state == DETONATED) && (getBombTimerRemainingMs() == 0);
+  const bool bombTimerDisplay = ((state == ARMED) && isBombTimerActive()) || bombTimerExpired;
   const bool gameTimerValid = isGameTimerValid();
   uint32_t timerSource = 0;
-
-  if (bombTimerActive) {
-    timerSource = getBombTimerRemainingMs();
-  } else if (gameTimerValid) {
-    timerSource = getGameTimerRemainingMs();
-  } else {
-    timerSource = (remainingMs == 0) ? bombDurationMs : remainingMs;
-  }
+  uint16_t timerColor = FOREGROUND_COLOR;
 
   char timeBuffer[8] = {0};
-  formatTimeMMSS(timerSource, timeBuffer, sizeof(timeBuffer));
+  if (bombTimerDisplay) {
+    timerSource = getBombTimerRemainingMs();
+    timerColor = (timerSource <= 10000) ? TFT_RED : FOREGROUND_COLOR;
+    formatTimeSSMM(timerSource, timeBuffer, sizeof(timeBuffer));
+  } else if (gameTimerValid) {
+    timerSource = getGameTimerRemainingMs();
+    formatTimeMMSS(timerSource, timeBuffer, sizeof(timeBuffer));
+  } else {
+    timerSource = (remainingMs == 0) ? bombDurationMs : remainingMs;
+    formatTimeMMSS(timerSource, timeBuffer, sizeof(timeBuffer));
+  }
+
   const String timerText = String(timeBuffer);
-  if (timerText != lastTimerText) {
-    drawCenteredText(timerText, TIMER_Y, TIMER_TEXT_SIZE, 48);
+  if (timerText != lastTimerText || timerColor != lastTimerColor) {
+    drawCenteredText(timerText, TIMER_Y, TIMER_TEXT_SIZE, 48, timerColor);
     lastTimerText = timerText;
+    lastTimerColor = timerColor;
   }
 
   // Status line
