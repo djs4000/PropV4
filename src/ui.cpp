@@ -171,8 +171,8 @@ void formatTimeMMSS(uint32_t ms, char *buffer, size_t len) {
   const uint32_t minutes = totalSeconds / 60;
   const uint32_t seconds = totalSeconds % 60;
 
-  // Display as SS:mm (seconds first, then minutes) to match the requested format.
-  snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(seconds), static_cast<unsigned>(minutes));
+  // Display as MM:SS (minutes first, then seconds) to match the requested format.
+  snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(minutes), static_cast<unsigned>(seconds));
 }
 
 void renderBootScreen(const String &wifiSsid, bool wifiConnected, bool wifiFailed,
@@ -310,7 +310,10 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   tft.setTextDatum(BL_DATUM);
   tft.setTextSize(1);
   const String ipOverlay = "IP: " + network::getWifiIpString();
-  tft.drawString(ipOverlay, 2, tft.height() - 2);
+  const String statusOverlay = flameStateToString(state);
+  const String timerOverlay = String("T ") + timerText;
+  const String debugLine = ipOverlay + " | " + statusOverlay + " | " + timerOverlay;
+  tft.drawString(debugLine, 2, tft.height() - 2);
 #endif
 
   lastRenderedState = state;
