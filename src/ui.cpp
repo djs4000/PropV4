@@ -141,6 +141,7 @@ void drawStaticLayout() {
   }
 
   tft.fillScreen(BACKGROUND_COLOR);
+  tft.setTextColor(FOREGROUND_COLOR, BACKGROUND_COLOR);
 
   // Title
   tft.setTextDatum(TC_DATUM);
@@ -330,7 +331,7 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
       renderCacheInvalidated = true;
       tft.fillScreen(DETONATED_BG_COLOR);
       tft.setTextDatum(TC_DATUM);
-      tft.setTextSize(TIMER_TEXT_SIZE);
+      tft.setTextSize(TIMER_TEXT_SIZE - 1);
       tft.setTextColor(DETONATED_TEXT_COLOR, DETONATED_BG_COLOR);
       tft.drawString("DETONATED", tft.width() / 2, tft.height() / 2);
     }
