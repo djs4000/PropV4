@@ -17,7 +17,8 @@ constexpr uint8_t TIMER_TEXT_SIZE = 5;
 constexpr uint8_t STATUS_TEXT_SIZE = 2;
 constexpr uint8_t BOOT_DETAIL_TEXT_SIZE = 1;
 constexpr uint8_t CODE_TEXT_SIZE = 2;
-constexpr int16_t STATUS_CLEAR_HEIGHT = STATUS_TEXT_SIZE * 8 + 10;
+constexpr int16_t STATUS_CLEAR_EXTRA = 3;
+constexpr int16_t STATUS_CLEAR_HEIGHT = STATUS_TEXT_SIZE * 8 + 10 + STATUS_CLEAR_EXTRA;
 
 // Shifted downward to keep the title fully visible and better use the canvas height.
 constexpr int16_t TITLE_Y = 20;

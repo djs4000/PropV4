@@ -301,7 +301,6 @@ void updateApi() {
   outboundState = getState();
 
   JsonDocument doc;
-  doc.allocate(128);
   doc["state"] = flameStateToString(outboundState);
   doc["timer"] = outboundTimerMs;  // Placeholder until real timers are wired up.
   doc["timestamp"] = 0;           // Placeholder; real clock will be integrated later.
@@ -356,7 +355,6 @@ void updateApi() {
   if (httpCode == HTTP_CODE_OK) {
     const String response = http.getString();
     JsonDocument respDoc;
-    respDoc.allocate(256);
     const DeserializationError err = deserializeJson(respDoc, response);
     if (!err) {
       const char *statusStr = respDoc["status"];
