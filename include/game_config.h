@@ -38,3 +38,31 @@ enum class ApiMode {
 };
 
 inline ApiMode getApiMode() { return ApiMode::FullOnline; }
+
+// LED matrix configuration for the WS2812B strip wrapped as a cylinder.
+constexpr uint8_t LED_MATRIX_ROWS = 14;   // height
+constexpr uint8_t LED_MATRIX_COLS = 8;    // circumference columns
+constexpr uint16_t LED_COUNT = LED_MATRIX_ROWS * LED_MATRIX_COLS;
+
+struct RgbColor {
+  uint8_t r;
+  uint8_t g;
+  uint8_t b;
+};
+
+// Tunable colors per flame state.
+constexpr RgbColor COLOR_READY = {200, 150, 40};       // soft yellow
+constexpr RgbColor COLOR_ACTIVE = {30, 200, 60};       // green
+constexpr RgbColor COLOR_ARMING = {255, 180, 40};      // orange/yellow
+constexpr RgbColor COLOR_ARMED = {220, 40, 20};        // red
+constexpr RgbColor COLOR_DEFUSED = {30, 120, 255};     // blue
+constexpr RgbColor COLOR_DETONATED = {255, 0, 0};      // bright red
+constexpr RgbColor COLOR_ERROR = {200, 0, 0};          // solid red
+constexpr RgbColor COLOR_BOOT = {255, 200, 40};        // bright yellow for boot flash
+
+// Timing controls for LED/audio effects.
+constexpr uint32_t EFFECTS_FRAME_INTERVAL_MS = 30;       // base frame cadence
+constexpr uint32_t COUNTDOWN_BEEP_INTERVAL_MS = 1000;     // 1s beeps
+constexpr uint32_t COUNTDOWN_BEEP_FAST_INTERVAL_MS = 500; // faster cadence near zero
+constexpr uint32_t DETONATED_EFFECT_DURATION_MS = 10000;
+constexpr uint32_t DEFUSED_EFFECT_DURATION_MS = 5000;

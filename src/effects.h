@@ -1,21 +1,19 @@
 #pragma once
 
 #include <Arduino.h>
+#include "state_machine.h"
 
 namespace effects {
-// Initialize LED strip and audio output hardware.
-void initEffects();
+void init();
+void update();
 
-// Startup hardware self-checks.
-void startStartupTest();
-void updateStartupTest();
+// Optional helpers triggered by events.
+void onBoot();                 // boot beep + flash
+void onStateChanged(FlameState oldState, FlameState newState);
+void onKeypadKey();            // short click beep
+void onArmingConfirmed();      // IR-confirmed arm beep
+void setArmingProgress(float progress01);
 
-void startStartupBeep();
-void updateStartupBeep();
-
-// Short acknowledgment when IR confirmation is received.
-void startConfirmationBeep();
-
-// Placeholder for ongoing animation/audio updates beyond startup.
-void updateEffects();
+// Simple tone helper.
+void playBeep(uint16_t frequencyHz, uint16_t durationMs, uint8_t volume = 200);
 }  // namespace effects
