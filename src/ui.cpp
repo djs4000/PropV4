@@ -1,6 +1,7 @@
 #include "ui.h"
 
 #include <TFT_eSPI.h>
+#include <cmath>
 
 #include "network.h"
 #include "state_machine.h"
@@ -16,6 +17,8 @@ constexpr uint8_t TIMER_TEXT_SIZE = 5;
 constexpr uint8_t STATUS_TEXT_SIZE = 2;
 constexpr uint8_t BOOT_DETAIL_TEXT_SIZE = 1;
 constexpr uint8_t CODE_TEXT_SIZE = 2;
+constexpr int16_t STATUS_CLEAR_EXTRA = 3;
+constexpr int16_t STATUS_CLEAR_HEIGHT = STATUS_TEXT_SIZE * 8 + 10 + STATUS_CLEAR_EXTRA;
 
 // Shifted downward to keep the title fully visible and better use the canvas height.
 constexpr int16_t TITLE_Y = 20;
@@ -26,6 +29,7 @@ constexpr int16_t BAR_WIDTH = 200;
 constexpr int16_t BAR_HEIGHT = 16;
 constexpr int16_t BAR_BORDER = 2;
 constexpr int16_t CODE_Y = 260;
+constexpr uint32_t ARMING_BAR_FRAME_INTERVAL_MS = 40;
 
 TFT_eSPI tft = TFT_eSPI();
 bool screenInitialized = false;
@@ -37,6 +41,8 @@ FlameState lastRenderedState = ON;
 String lastTimerText;
 String lastStatusText;
 int16_t lastBarFill = -1;
+uint32_t lastArmingBarUpdateMs = 0;
+float lastArmingProgress = -1.0f;
 uint8_t lastCodeLength = 0;
 bool renderCacheInvalidated = true;
 
@@ -141,6 +147,18 @@ void drawCenteredText(const String &text, int16_t y, uint8_t textSize, int16_t c
   tft.fillRect(0, clearY, tft.width(), clearHeight, BACKGROUND_COLOR);
   tft.drawString(text, tft.width() / 2, y);
 }
+
+void clearStatusArea() {
+  const int16_t clearY = STATUS_Y - STATUS_CLEAR_HEIGHT / 2;
+  tft.fillRect(0, clearY, tft.width(), STATUS_CLEAR_HEIGHT, BACKGROUND_COLOR);
+}
+
+void drawStatusLine(const String &text) {
+  tft.setTextDatum(TC_DATUM);
+  tft.setTextSize(STATUS_TEXT_SIZE);
+  clearStatusArea();
+  tft.drawString(text, tft.width() / 2, STATUS_Y);
+}
 }  // namespace
 
 namespace ui {
@@ -153,7 +171,8 @@ void formatTimeMMSS(uint32_t ms, char *buffer, size_t len) {
   const uint32_t minutes = totalSeconds / 60;
   const uint32_t seconds = totalSeconds % 60;
 
-  snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(minutes), static_cast<unsigned>(seconds));
+  // Display as SS:mm (seconds first, then minutes) to match the requested format.
+  snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(seconds), static_cast<unsigned>(minutes));
 }
 
 void renderBootScreen(const String &wifiSsid, bool wifiConnected, bool wifiFailed,
@@ -190,7 +209,7 @@ void initMainScreen() {
 
   // Prime dynamic regions to a clean state.
   drawCenteredText("--:--", TIMER_Y, TIMER_TEXT_SIZE, 48);
-  drawCenteredText("Status:", STATUS_Y, STATUS_TEXT_SIZE, 24);
+  drawStatusLine("Status:");
 
   // Clear progress fill area.
   tft.fillRect(barX() + BAR_BORDER, BAR_Y + BAR_BORDER, BAR_WIDTH - 2 * BAR_BORDER,
@@ -214,6 +233,8 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     lastTimerText = "";
     lastStatusText = "";
     lastBarFill = -1;
+    lastArmingBarUpdateMs = 0;
+    lastArmingProgress = -1.0f;
     lastCodeLength = 0;
     lastRenderedState = ON;
     renderCacheInvalidated = false;
@@ -233,7 +254,7 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   String statusText = "Status: ";
   statusText += flameStateToString(state);
   if (statusText != lastStatusText) {
-    drawCenteredText(statusText, STATUS_Y, STATUS_TEXT_SIZE, 24);
+    drawStatusLine(statusText);
     lastStatusText = statusText;
   }
 
@@ -241,7 +262,12 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   const float clampedProgress = (state == ARMING) ? constrain(armingProgress01, 0.0f, 1.0f) : 0.0f;
   const int16_t innerWidth = BAR_WIDTH - 2 * BAR_BORDER;
   const int16_t fillWidth = static_cast<int16_t>(innerWidth * clampedProgress);
-  if (fillWidth != lastBarFill) {
+  const uint32_t now = millis();
+  const bool progressChanged = std::fabs(clampedProgress - lastArmingProgress) >= 0.01f;
+  const bool timeElapsed = (now - lastArmingBarUpdateMs) >= ARMING_BAR_FRAME_INTERVAL_MS;
+  const bool stateChanged = (state != lastRenderedState);
+
+  if (progressChanged || timeElapsed || stateChanged || lastBarFill == -1) {
     tft.fillRect(barX() + BAR_BORDER, BAR_Y + BAR_BORDER, innerWidth, BAR_HEIGHT - 2 * BAR_BORDER,
                  BACKGROUND_COLOR);
     if (fillWidth > 0) {
@@ -249,6 +275,8 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
                    FOREGROUND_COLOR);
     }
     lastBarFill = fillWidth;
+    lastArmingBarUpdateMs = now;
+    lastArmingProgress = clampedProgress;
   }
 
   // Defuse code placeholders are only shown when armed.
