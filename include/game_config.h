@@ -39,10 +39,13 @@ enum class ApiMode {
 
 inline ApiMode getApiMode() { return ApiMode::FullOnline; }
 
-// LED matrix configuration for the WS2812B strip wrapped as a cylinder.
-constexpr uint8_t LED_MATRIX_ROWS = 14;   // height
+// LED matrix configuration for the WS2812B strip wrapped as a cylinder. The
+// current build is 9 rows high and 8 columns around, with an 8-LED lead before
+// the matrix begins.
+constexpr uint8_t LED_MATRIX_ROWS = 9;    // height
 constexpr uint8_t LED_MATRIX_COLS = 8;    // circumference columns
-constexpr uint16_t LED_COUNT = LED_MATRIX_ROWS * LED_MATRIX_COLS;
+constexpr uint16_t LED_START_OFFSET = 8;  // number of LEDs before the matrix
+constexpr uint16_t LED_COUNT = LED_MATRIX_ROWS * LED_MATRIX_COLS + LED_START_OFFSET;
 
 struct RgbColor {
   uint8_t r;

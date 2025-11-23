@@ -26,8 +26,6 @@ bool defusedActive = false;
 uint32_t detonatedStartMs = 0;
 bool detonatedActive = false;
 
-uint32_t lastCountdownBeepMs = 0;
-bool countdownFinalBeepDone = false;
 uint32_t lastArmedBeepMs = 0;
 
 struct ToneState {
@@ -67,13 +65,14 @@ uint16_t mapRowColToIndex(uint8_t row, uint8_t col) {
     return 0;
   }
 
-  // Physical wiring snakes column by column around the cylinder, starting near
-  // the bottom of column 0 and climbing up. Even columns count bottom-to-top,
-  // odd columns top-to-bottom. This keeps row 0 at the physical bottom and
-  // matches observed wiring like: 8, 9, 26, 27...
-  const bool columnReverse = (col % 2) == 1;
-  const uint8_t mappedRow = columnReverse ? row : static_cast<uint8_t>(LED_MATRIX_ROWS - 1 - row);
-  return static_cast<uint16_t>(col) * LED_MATRIX_ROWS + mappedRow;
+  // Matrix begins after an 8-LED lead. Wiring interleaves two columns per
+  // strip such that row data for a column pair is adjacent in memory. Rows are
+  // counted from bottom (0) to top. Example bottom row indices: 8, 9, 26, 27.
+  const uint8_t pair = col / 2;
+  const bool secondInPair = (col % 2) == 1;
+  const uint16_t base = LED_START_OFFSET + static_cast<uint16_t>(pair) * (LED_MATRIX_ROWS * 2);
+  const uint16_t indexWithinPair = static_cast<uint16_t>(row) * 2 + (secondInPair ? 1 : 0);
+  return base + indexWithinPair;
 }
 
 void updateTone() {
@@ -129,11 +128,10 @@ void renderActive(uint32_t now) {
 void renderArming() {
   const uint8_t litRows = static_cast<uint8_t>(ceilf(constrain(armingProgress01, 0.0f, 1.0f) * LED_MATRIX_ROWS));
   for (uint8_t row = 0; row < LED_MATRIX_ROWS; ++row) {
-    const uint8_t mappedRow = static_cast<uint8_t>(LED_MATRIX_ROWS - 1 - row);
     const bool rowLit = row < litRows;
     const float scale = rowLit ? 0.8f : 0.05f;
     for (uint8_t col = 0; col < LED_MATRIX_COLS; ++col) {
-      strip.setPixelColor(mapRowColToIndex(mappedRow, col), colorToPixel(COLOR_ARMING, scale));
+      strip.setPixelColor(mapRowColToIndex(row, col), colorToPixel(COLOR_ARMING, scale));
     }
   }
 }
@@ -179,37 +177,6 @@ void renderError(uint32_t now) {
   fillAll(COLOR_ERROR, wave);
 }
 
-void handleCountdownBeeps(uint32_t now) {
-  if (getMatchStatus() != Countdown || !isGameTimerValid()) {
-    countdownFinalBeepDone = false;
-    lastCountdownBeepMs = 0;
-    return;
-  }
-
-  const uint32_t remaining = getGameTimerRemainingMs();
-
-  // Only beep during the final 5 seconds of the countdown.
-  if (remaining > 5000) {
-    lastCountdownBeepMs = 0;
-    countdownFinalBeepDone = false;
-    return;
-  }
-
-  if (remaining <= 120) {
-    if (!countdownFinalBeepDone) {
-      effects::playBeep(1900, 220, 200);
-      countdownFinalBeepDone = true;
-    }
-    return;
-  }
-
-  countdownFinalBeepDone = false;
-  if (now - lastCountdownBeepMs >= COUNTDOWN_BEEP_INTERVAL_MS) {
-    effects::playBeep(1900, 140, 200);
-    lastCountdownBeepMs = now;
-  }
-}
-
 void handleArmedBeeps(uint32_t now, FlameState state) {
   if (state != ARMED || !isBombTimerActive()) {
     return;
@@ -241,9 +208,9 @@ void handleWrongCodeBeep(uint32_t now) {
   }
 
   if (wrongCodeBeep.step == 1) {
-    effects::playBeep(850, 80, 150);
+    effects::playBeep(720, 140, 200);
     wrongCodeBeep.step = 2;
-    wrongCodeBeep.nextBeepMs = now + 200;
+    wrongCodeBeep.nextBeepMs = now + 180;
     return;
   }
 
@@ -269,7 +236,6 @@ void init() {
 void update(uint32_t now) {
   updateTone();
   handleWrongCodeBeep(now);
-  handleCountdownBeeps(now);
   handleArmedBeeps(now, getState());
 
   if (now - lastFrameMs < EFFECTS_FRAME_INTERVAL_MS) {
@@ -341,13 +307,13 @@ void onStateChanged(FlameState oldState, FlameState newState) {
   }
 }
 
-void onKeypadKey() { playBeep(900, 40, 140); }
+void onKeypadKey() { playBeep(1200, 80, 200); }
 
 void onWrongCode() {
   wrongCodeBeep.active = true;
   wrongCodeBeep.step = 1;
-  wrongCodeBeep.nextBeepMs = millis() + 160;
-  playBeep(850, 80, 150);
+  playBeep(700, 140, 220);
+  wrongCodeBeep.nextBeepMs = toneState.endMs + 120;
 }
 
 void onArmingConfirmed() { playBeep(2200, 200); }
