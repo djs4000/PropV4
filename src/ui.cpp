@@ -36,6 +36,9 @@ constexpr int16_t BAR_HEIGHT = 16;
 constexpr int16_t BAR_BORDER = 2;
 constexpr int16_t CODE_Y = 260;
 constexpr uint32_t ARMING_BAR_FRAME_INTERVAL_MS = 40;
+constexpr int16_t ARMING_BAR_CHUNK_PX = 8;
+constexpr uint32_t TIMER_REDRAW_MIN_INTERVAL_MS = 200;
+constexpr uint32_t TIMER_REDRAW_MIN_CS_STEP = 50;  // ~500 ms step for centiseconds
 
 TFT_eSPI tft = TFT_eSPI();
 bool screenInitialized = false;
@@ -393,11 +396,16 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   }
 
   const uint32_t currentCentiseconds = timerSource / 10;
-  const bool intervalElapsed = (now - lastTimerRedrawMs) >= 150;
+  const uint32_t csDelta = (lastShownCentiseconds == UINT32_MAX)
+                               ? TIMER_REDRAW_MIN_CS_STEP
+                               : static_cast<uint32_t>(abs(static_cast<int32_t>(currentCentiseconds -
+                                                                                 lastShownCentiseconds)));
+  const bool intervalElapsed = (now - lastTimerRedrawMs) >= TIMER_REDRAW_MIN_INTERVAL_MS;
   const bool timerChanged = (currentCentiseconds != lastShownCentiseconds) || (timerColor != lastTimerColor) ||
                             renderCacheInvalidated;
+  const bool coarseCentisecondStep = csDelta >= TIMER_REDRAW_MIN_CS_STEP;
 
-  if (timerChanged || intervalElapsed) {
+  if (timerChanged && (intervalElapsed || coarseCentisecondStep)) {
     char timeBuffer[8] = {0};
     formatTimeSSMM(timerSource, timeBuffer, sizeof(timeBuffer));
     const String timerText = String(timeBuffer);
@@ -416,22 +424,42 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     lastStatusColor = statusColor;
   }
 
-  // Progress bar fill (only visible during arming, empty otherwise)
+  const bool stateChanged = (state != lastRenderedState);
   const float clampedProgress = (state == ARMING) ? constrain(armingProgress01, 0.0f, 1.0f) : 0.0f;
   const int16_t innerWidth = BAR_WIDTH - 2 * BAR_BORDER;
-  const int16_t fillWidth = static_cast<int16_t>(innerWidth * clampedProgress);
+  const int16_t desiredFill = (state == ARMING)
+                                  ? static_cast<int16_t>(innerWidth * clampedProgress)
+                                  : 0;
+  const int16_t quantizedFill = static_cast<int16_t>((desiredFill / ARMING_BAR_CHUNK_PX) * ARMING_BAR_CHUNK_PX);
   const bool progressChanged = std::fabs(clampedProgress - lastArmingProgress) >= 0.01f;
   const bool timeElapsed = (now - lastArmingBarUpdateMs) >= ARMING_BAR_FRAME_INTERVAL_MS;
-  const bool stateChanged = (state != lastRenderedState);
 
-  if (progressChanged || timeElapsed || stateChanged || lastBarFill == -1) {
+  if (stateChanged && state != ARMING && lastBarFill > 0) {
     tft.fillRect(barX() + BAR_BORDER, BAR_Y + BAR_BORDER, innerWidth, BAR_HEIGHT - 2 * BAR_BORDER,
                  BACKGROUND_COLOR);
-    if (fillWidth > 0) {
-      tft.fillRect(barX() + BAR_BORDER, BAR_Y + BAR_BORDER, fillWidth, BAR_HEIGHT - 2 * BAR_BORDER,
-                   FOREGROUND_COLOR);
+    lastBarFill = 0;
+    lastArmingProgress = 0.0f;
+    lastArmingBarUpdateMs = now;
+  }
+
+  if (state == ARMING && (progressChanged || timeElapsed || stateChanged || lastBarFill == -1)) {
+    const int16_t clampedFill = constrain(quantizedFill, static_cast<int16_t>(0), innerWidth);
+    const int16_t delta = clampedFill - lastBarFill;
+    if (stateChanged || lastBarFill == -1) {
+      tft.fillRect(barX() + BAR_BORDER, BAR_Y + BAR_BORDER, innerWidth, BAR_HEIGHT - 2 * BAR_BORDER,
+                   BACKGROUND_COLOR);
     }
-    lastBarFill = fillWidth;
+    if (delta != 0 || stateChanged || lastBarFill == -1) {
+      const int16_t fillY = BAR_Y + BAR_BORDER;
+      const int16_t fillHeight = BAR_HEIGHT - 2 * BAR_BORDER;
+      const int16_t fillX = barX() + BAR_BORDER;
+      if (delta > 0) {
+        tft.fillRect(fillX + lastBarFill, fillY, delta, fillHeight, FOREGROUND_COLOR);
+      } else if (delta < 0) {
+        tft.fillRect(fillX + clampedFill, fillY, -delta, fillHeight, BACKGROUND_COLOR);
+      }
+      lastBarFill = clampedFill;
+    }
     lastArmingBarUpdateMs = now;
     lastArmingProgress = clampedProgress;
   }
