@@ -27,6 +27,7 @@ uint32_t detonatedStartMs = 0;
 bool detonatedActive = false;
 
 uint32_t lastCountdownBeepMs = 0;
+bool countdownFinalBeepDone = false;
 uint32_t lastArmedBeepMs = 0;
 
 struct ToneState {
@@ -166,11 +167,31 @@ void renderError(uint32_t now) {
 
 void handleCountdownBeeps(uint32_t now) {
   if (getMatchStatus() != Countdown || !isGameTimerValid()) {
+    countdownFinalBeepDone = false;
+    lastCountdownBeepMs = 0;
     return;
   }
+
   const uint32_t remaining = getGameTimerRemainingMs();
-  if (remaining <= 5000 && now - lastCountdownBeepMs >= COUNTDOWN_BEEP_INTERVAL_MS) {
-    effects::playBeep(1800, 120);
+
+  // Only beep during the final 5 seconds of the countdown.
+  if (remaining > 5000) {
+    lastCountdownBeepMs = 0;
+    countdownFinalBeepDone = false;
+    return;
+  }
+
+  if (remaining <= 120) {
+    if (!countdownFinalBeepDone) {
+      effects::playBeep(1900, 220, 200);
+      countdownFinalBeepDone = true;
+    }
+    return;
+  }
+
+  countdownFinalBeepDone = false;
+  if (now - lastCountdownBeepMs >= COUNTDOWN_BEEP_INTERVAL_MS) {
+    effects::playBeep(1900, 140, 200);
     lastCountdownBeepMs = now;
   }
 }
@@ -258,7 +279,7 @@ void update() {
 void onBoot() {
   bootFlashStartMs = millis();
   bootFlashActive = true;
-  playBeep(1500, 200);
+  playBeep(1500, 120, 160);
 }
 
 void onStateChanged(FlameState oldState, FlameState newState) {
@@ -274,7 +295,7 @@ void onStateChanged(FlameState oldState, FlameState newState) {
   } else if (newState == DETONATED) {
     detonatedActive = true;
     detonatedStartMs = millis();
-    playBeep(900, DETONATED_EFFECT_DURATION_MS, 255);
+    playBeep(900, DETONATED_EFFECT_DURATION_MS / 2, 255);
   } else if (newState == ERROR_STATE) {
     playBeep(500, 400);
   } else if (newState == READY && oldState == ON) {
