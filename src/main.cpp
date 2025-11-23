@@ -11,7 +11,14 @@
 #include "wifi_config.h"
 
 // Cooperative scheduler timestamps
-static unsigned long lastStateUpdateMs = 0;
+static uint32_t lastInputsUpdateMs = 0;
+static uint32_t lastStateUpdateMs = 0;
+static uint32_t lastUiUpdateMs = 0;
+static uint32_t lastEffectsUpdateMs = 0;
+static uint32_t lastApiUpdateMs = 0;
+static uint32_t lastWifiUpdateMs = 0;
+static uint32_t lastWebUiUpdateMs = 0;
+
 static uint32_t configuredBombDurationMs = DEFAULT_BOMB_DURATION_MS;
 static bool mainScreenInitialized = false;
 static FlameState lastRenderedState = ON;
@@ -161,43 +168,62 @@ void setup() {
 }
 
 void loop() {
-  const unsigned long now = millis();
+  const uint32_t now = millis();
 
-  // Keep the cached bomb duration aligned with any persisted updates.
-  configuredBombDurationMs = network::getConfiguredBombDurationMs();
-
-  updateInputs();
-
-  // Startup hardware self-checks (LEDs + audio) remain non-blocking via effects::update().
-  effects::update();
-
-  renderBootScreenIfNeeded();
-
-  ui::updateUI();
-
-  // Networking cadence is controlled internally based on API_POST_INTERVAL_MS.
-  network::updateWifi();
-
-  if (network::isConfigPortalActive()) {
-    if (!configScreenRendered) {
-      ui::renderConfigPortalScreen(network::getConfigPortalSsid(), network::getConfigPortalPassword());
-      configScreenRendered = true;
-    }
-  } else if (configScreenRendered) {
-    // Force boot/main UI to refresh after leaving config mode.
-    configScreenRendered = false;
-    mainScreenInitialized = false;
+  if (now - lastInputsUpdateMs >= 5) {
+    lastInputsUpdateMs = now;
+    updateInputs();
   }
 
-  // Always service the configuration web server so LAN clients can load the page
-  // even when STA mode is connected.
-  network::updateConfigPortal();
+  if (now - lastWifiUpdateMs >= 200) {
+    lastWifiUpdateMs = now;
+    network::updateWifi();
+  }
+
+  if (now - lastStateUpdateMs >= 10) {
+    lastStateUpdateMs = now;
+    updateState();
+  }
+
+  if (now - lastEffectsUpdateMs >= 42) {
+    lastEffectsUpdateMs = now;
+    effects::update(now);
+  }
+
+  if (now - lastUiUpdateMs >= 42) {
+    lastUiUpdateMs = now;
+
+    // Keep the cached bomb duration aligned with any persisted updates.
+    configuredBombDurationMs = network::getConfiguredBombDurationMs();
+
+    renderBootScreenIfNeeded();
+
+    if (network::isConfigPortalActive()) {
+      if (!configScreenRendered) {
+        ui::renderConfigPortalScreen(network::getConfigPortalSsid(), network::getConfigPortalPassword());
+        configScreenRendered = true;
+      }
+    } else if (configScreenRendered) {
+      // Force boot/main UI to refresh after leaving config mode.
+      configScreenRendered = false;
+      mainScreenInitialized = false;
+    }
+
+    renderMainUiIfNeeded(getState());
 
 #ifdef APP_DEBUG
-  handleDebugSerialStateChange();
+    handleDebugSerialStateChange();
 #endif
+  }
 
-  if (network::isWifiConnected()) {
+  // Throttle web UI servicing to reduce load during ACTIVE/ARMING while keeping config responsive.
+  if (now - lastWebUiUpdateMs >= 200) {
+    lastWebUiUpdateMs = now;
+    network::updateConfigPortal(now, getState());
+  }
+
+  if (network::isWifiConnected() && now - lastApiUpdateMs >= API_POST_INTERVAL_MS) {
+    lastApiUpdateMs = now;
     network::updateApi();
   }
 
@@ -210,13 +236,5 @@ void loop() {
       setState(ERROR_STATE);
       renderMainUiIfNeeded(getState());
     }
-  }
-
-  // State machine should run frequently but cheaply; simple guard in case
-  // future logic needs throttling.
-  if (now - lastStateUpdateMs >= 10) {
-    lastStateUpdateMs = now;
-    updateState();
-    renderMainUiIfNeeded(getState());
   }
 }

@@ -26,6 +26,8 @@ static RuntimeConfig runtimeConfig = {String(DEFAULT_WIFI_SSID), String(DEFAULT_
                                       String(DEFAULT_DEFUSE_CODE), DEFAULT_BOMB_DURATION_MS,
                                       String(DEFAULT_API_ENDPOINT)};
 
+enum class ApiRequestState { Idle, InFlight };
+
 static uint64_t lastSuccessfulApiMs = 0;
 static MatchStatus remoteStatus = WaitingOnStart;
 static FlameState outboundState = ON;
@@ -37,6 +39,7 @@ static bool apiResponseReceived = false;
 
 // Tracks the last POST attempt to maintain the configured cadence.
 static uint32_t lastApiPostMs = 0;
+static ApiRequestState apiRequestState = ApiRequestState::Idle;
 
 static uint8_t wifiRetryCount = 0;
 static uint32_t wifiAttemptStartMs = 0;
@@ -51,6 +54,7 @@ static bool configPortalReconnectRequested = false;
 static String configPortalSsid;
 static bool webServerRunning = false;
 static bool webServerRoutesConfigured = false;
+static uint32_t lastWebServerServiceMs = 0;
 
 // Timeout for each WiFi connection attempt before retrying.
 static constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 5000;
@@ -292,9 +296,16 @@ void setOutboundStatus(FlameState state, uint32_t timerMs) {
 
 void updateApi() {
   const uint32_t now = millis();
+  if (apiRequestState == ApiRequestState::InFlight) {
+    return;
+  }
   if (now - lastApiPostMs < API_POST_INTERVAL_MS) {
     return;
   }
+  if (!isWifiConnected()) {
+    return;
+  }
+
   lastApiPostMs = now;
 
   // Keep outbound state/timer in sync with the current state machine status.
@@ -318,18 +329,16 @@ void updateApi() {
   const ApiMode mode = getApiMode();
 
   if (mode == ApiMode::Disabled) {
-#ifdef APP_DEBUG
-    Serial.print("API disabled; payload: ");
-    Serial.println(payload);
-#endif
     // Prevent timeout triggers while intentionally offline.
     lastSuccessfulApiMs = now;
     return;
   }
 
-  if (!isWifiConnected()) {
-    return;
-  }
+  struct ApiRequestGuard {
+    explicit ApiRequestGuard(ApiRequestState &stateRef) : state(stateRef) { state = ApiRequestState::InFlight; }
+    ~ApiRequestGuard() { state = ApiRequestState::Idle; }
+    ApiRequestState &state;
+  } guard(apiRequestState);
 
   HTTPClient http;
   if (!http.begin(runtimeConfig.apiEndpoint)) {
@@ -342,6 +351,7 @@ void updateApi() {
     return;
   }
 
+  http.setTimeout(2000);
   http.addHeader("Content-Type", "application/json");
   const int httpCode = http.POST(payload);
 
@@ -437,10 +447,20 @@ void beginConfigPortal() {
 #endif
 }
 
-void updateConfigPortal() {
+void updateConfigPortal(uint32_t now, FlameState state) {
   if (!webServerRunning) {
     return;
   }
+
+  uint32_t interval = 200;
+  if (state == ACTIVE || state == ARMING || state == ARMED) {
+    interval = 500;
+  }
+
+  if (now - lastWebServerServiceMs < interval) {
+    return;
+  }
+  lastWebServerServiceMs = now;
 
   server.handleClient();
 

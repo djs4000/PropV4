@@ -5,7 +5,7 @@
 
 namespace effects {
 void init();
-void update();
+void update(uint32_t now);
 
 // Optional helpers triggered by events.
 void onBoot();                 // boot beep + flash

@@ -229,8 +229,7 @@ void init() {
   ledcWrite(AUDIO_CHANNEL, 0);
 }
 
-void update() {
-  const uint32_t now = millis();
+void update(uint32_t now) {
   updateTone();
   handleCountdownBeeps(now);
   handleArmedBeeps(now, getState());
