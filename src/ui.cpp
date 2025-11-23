@@ -1,6 +1,7 @@
 #include "ui.h"
 
 #include <TFT_eSPI.h>
+#include <algorithm>
 #include <cmath>
 
 #include "network.h"
@@ -190,20 +191,26 @@ void drawSegmentedTimer(const String &timerText, uint16_t timerColor) {
   tft.setTextColor(timerColor, BACKGROUND_COLOR);
 
   const int16_t textHeight = TIMER_TEXT_SIZE * 8;
-  const int16_t totalWidth = tft.textWidth(timerText, TIMER_TEXT_SIZE);
-  const int16_t startX = (tft.width() - totalWidth) / 2;
-  const int16_t baseY = TIMER_Y - textHeight / 2;
   const int16_t secondsWidth = tft.textWidth(secondsWithColon, TIMER_TEXT_SIZE);
-  const int16_t centisecondsX = startX + secondsWidth;
+  const int16_t centisecondsWidth = tft.textWidth(centisecondsPart, TIMER_TEXT_SIZE);
+  const int16_t totalWidth = secondsWidth + centisecondsWidth;
+  const int16_t startX = std::max<int16_t>(0, (tft.width() - totalWidth) / 2);
+  const int16_t baseY = TIMER_Y - textHeight / 2;
+  const int16_t secondsX = startX;
+  const int16_t centisecondsX = secondsX + secondsWidth;
 
   if (colorChanged || secondsChanged) {
     const int16_t clearY = TIMER_Y - TIMER_CLEAR_HEIGHT / 2;
-    tft.fillRect(0, clearY, tft.width(), TIMER_CLEAR_HEIGHT, BACKGROUND_COLOR);
-    tft.drawString(secondsWithColon, startX, baseY);
+    const int16_t clearWidth = std::min<int16_t>(tft.width(), totalWidth);
+    const int16_t clearX = (clearWidth == tft.width()) ? 0 : startX;
+
+    tft.fillRect(clearX, clearY, clearWidth, TIMER_CLEAR_HEIGHT, BACKGROUND_COLOR);
+    tft.drawString(secondsWithColon, secondsX, baseY);
     tft.drawString(centisecondsPart, centisecondsX, baseY);
   } else if (centisecondsChanged) {
-    const int16_t centisecondsWidth = tft.textWidth(centisecondsPart, TIMER_TEXT_SIZE);
-    tft.fillRect(centisecondsX, baseY, centisecondsWidth, textHeight, BACKGROUND_COLOR);
+    const int16_t previousWidth = tft.textWidth(lastTimerCentisecondsText, TIMER_TEXT_SIZE);
+    const int16_t clearWidth = std::max<int16_t>(centisecondsWidth, previousWidth);
+    tft.fillRect(centisecondsX, baseY, clearWidth, textHeight, BACKGROUND_COLOR);
     tft.drawString(centisecondsPart, centisecondsX, baseY);
   }
 
