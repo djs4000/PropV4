@@ -171,8 +171,8 @@ void formatTimeMMSS(uint32_t ms, char *buffer, size_t len) {
   const uint32_t minutes = totalSeconds / 60;
   const uint32_t seconds = totalSeconds % 60;
 
-  // Display as SS:mm (seconds first, then minutes) to match the requested format.
-  snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(seconds), static_cast<unsigned>(minutes));
+  // Display as MM:SS (minutes first, then seconds) to match the requested format.
+  snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(minutes), static_cast<unsigned>(seconds));
 }
 
 void renderBootScreen(const String &wifiSsid, bool wifiConnected, bool wifiFailed,
@@ -303,14 +303,30 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   }
 
 #ifdef APP_DEBUG
-  // Tiny IP overlay for debugging along the bottom of the screen.
-  const int16_t debugHeight = 12;
+  // Two-line debug overlay along the bottom of the screen.
+  const int16_t debugHeight = 22;
   const int16_t debugY = tft.height() - debugHeight;
   tft.fillRect(0, debugY, tft.width(), debugHeight, BACKGROUND_COLOR);
-  tft.setTextDatum(BL_DATUM);
   tft.setTextSize(1);
   const String ipOverlay = "IP: " + network::getWifiIpString();
+  const String matchOverlay = String("Match ") + matchStatusToString(network::getRemoteMatchStatus());
+  char apiTimerBuffer[8] = {0};
+  if (network::hasReceivedApiResponse()) {
+    formatTimeMMSS(network::getRemoteRemainingTimeMs(), apiTimerBuffer, sizeof(apiTimerBuffer));
+  } else {
+    snprintf(apiTimerBuffer, sizeof(apiTimerBuffer), "--:--");
+  }
+  const String timerOverlay = String("T ") + String(apiTimerBuffer);
+
+  // Match status on the upper line.
+  tft.setTextDatum(TL_DATUM);
+  tft.drawString(matchOverlay, 2, debugY + 2);
+
+  // IP on the bottom-left, timer on the bottom-right.
+  tft.setTextDatum(BL_DATUM);
   tft.drawString(ipOverlay, 2, tft.height() - 2);
+  tft.setTextDatum(BR_DATUM);
+  tft.drawString(timerOverlay, tft.width() - 2, tft.height() - 2);
 #endif
 
   lastRenderedState = state;
