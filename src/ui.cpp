@@ -11,6 +11,9 @@ namespace {
 constexpr uint8_t BACKLIGHT_PIN = 21;
 constexpr uint16_t BACKGROUND_COLOR = TFT_BLACK;
 constexpr uint16_t FOREGROUND_COLOR = TFT_WHITE;
+constexpr uint16_t DEFUSED_COLOR = TFT_GREEN;
+constexpr uint16_t DETONATED_BG_COLOR = TFT_RED;
+constexpr uint16_t DETONATED_TEXT_COLOR = TFT_BLACK;
 
 // Layout constants tuned for a 240x320 portrait canvas (rotation 0).
 constexpr uint8_t TITLE_TEXT_SIZE = 2;
@@ -51,6 +54,7 @@ String lastDebugTimerText;
 String lastDebugMatchText;
 String lastDebugIpText;
 uint16_t lastTimerColor = FOREGROUND_COLOR;
+uint16_t lastStatusColor = FOREGROUND_COLOR;
 String lastTimerSecondsText;
 String lastTimerCentisecondsText;
 int16_t lastTimerStartX = -1;
@@ -166,9 +170,10 @@ void clearStatusArea() {
   tft.fillRect(0, clearY, tft.width(), STATUS_CLEAR_HEIGHT, BACKGROUND_COLOR);
 }
 
-void drawStatusLine(const String &text) {
+void drawStatusLine(const String &text, uint16_t color = FOREGROUND_COLOR) {
   tft.setTextDatum(TC_DATUM);
   tft.setTextSize(STATUS_TEXT_SIZE);
+  tft.setTextColor(color, BACKGROUND_COLOR);
   clearStatusArea();
   tft.drawString(text, tft.width() / 2, STATUS_Y);
 }
@@ -224,9 +229,13 @@ void drawSegmentedTimer(const String &timerText, uint16_t timerColor) {
     lastTimerSecondsWidth = secondsWidth;
     lastTimerCentisecondsWidth = centisecondsWidth;
   } else if (centisecondsChanged) {
+    const int16_t clearHeight = TIMER_CLEAR_HEIGHT;
+    const int16_t clearY = TIMER_Y - clearHeight / 2;
     const int16_t centisecondsX = lastTimerStartX + lastTimerSecondsWidth;
     const int16_t clearWidth = std::max<int16_t>(centisecondsWidth, lastTimerCentisecondsWidth);
-    tft.fillRect(centisecondsX, baseY, clearWidth, textHeight, BACKGROUND_COLOR);
+    const int16_t combinedWidth = lastTimerSecondsWidth + clearWidth;
+    tft.fillRect(lastTimerStartX, clearY, combinedWidth, clearHeight, BACKGROUND_COLOR);
+    tft.drawString(secondsWithColon, lastTimerStartX, baseY);
     tft.drawString(centisecondsPart, centisecondsX, baseY);
     lastTimerCentisecondsWidth = centisecondsWidth;
   }
@@ -314,6 +323,26 @@ void initMainScreen() {
 void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs, float armingProgress01,
                  uint8_t codeLength, uint8_t /*enteredDigits*/) {
   ensureDisplayReady();
+
+  if (state == DETONATED) {
+    if (lastRenderedState != DETONATED) {
+      layoutDrawn = false;
+      renderCacheInvalidated = true;
+      tft.fillScreen(DETONATED_BG_COLOR);
+      tft.setTextDatum(TC_DATUM);
+      tft.setTextSize(TIMER_TEXT_SIZE);
+      tft.setTextColor(DETONATED_TEXT_COLOR, DETONATED_BG_COLOR);
+      tft.drawString("DETONATED", tft.width() / 2, tft.height() / 2);
+    }
+    lastRenderedState = state;
+    return;
+  }
+
+  if (lastRenderedState == DETONATED && state != DETONATED) {
+    tft.fillScreen(BACKGROUND_COLOR);
+    layoutDrawn = false;
+    renderCacheInvalidated = true;
+  }
   drawStaticLayout();
 
   // If the layout was reinitialized (e.g., after leaving config mode), drop the
@@ -330,6 +359,7 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     lastDebugMatchText = "";
     lastDebugIpText = "";
     lastTimerColor = FOREGROUND_COLOR;
+    lastStatusColor = FOREGROUND_COLOR;
     lastTimerSecondsText = "";
     lastTimerCentisecondsText = "";
     lastTimerStartX = -1;
@@ -343,12 +373,14 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   const bool bombTimerHeld = (state == DEFUSED);
   const bool bombTimerDisplay = ((state == ARMED) && isBombTimerActive()) || bombTimerExpired || bombTimerHeld;
   uint32_t timerSource = 0;
-  uint16_t timerColor = FOREGROUND_COLOR;
+  uint16_t timerColor = (state == DEFUSED) ? DEFUSED_COLOR : FOREGROUND_COLOR;
 
   char timeBuffer[8] = {0};
   if (bombTimerDisplay) {
     timerSource = getBombTimerRemainingMs();
-    timerColor = (timerSource <= 10000) ? TFT_RED : FOREGROUND_COLOR;
+    if (state != DEFUSED && timerSource <= 10000) {
+      timerColor = TFT_RED;
+    }
   } else {
     timerSource = bombDurationMs;
   }
@@ -361,9 +393,11 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   // Status line
   String statusText = "Status: ";
   statusText += flameStateToString(state);
-  if (statusText != lastStatusText) {
-    drawStatusLine(statusText);
+  const uint16_t statusColor = (state == DEFUSED) ? DEFUSED_COLOR : FOREGROUND_COLOR;
+  if (statusText != lastStatusText || statusColor != lastStatusColor) {
+    drawStatusLine(statusText, statusColor);
     lastStatusText = statusText;
+    lastStatusColor = statusColor;
   }
 
   // Progress bar fill (only visible during arming, empty otherwise)
