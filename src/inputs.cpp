@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #define USE_IRREMOTE_HPP_AS_PLAIN_INCLUDE
-#include <remote.hpp>
+#include <IRremote.hpp>
 
 #include "inputs.h"
 

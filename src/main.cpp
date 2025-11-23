@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <remote.hpp>
+#include <IRremote.hpp>
 
 #include "effects.h"
 #include "game_config.h"

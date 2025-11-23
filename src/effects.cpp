@@ -13,6 +13,7 @@ constexpr uint8_t BEEP_CHANNEL = 0;
 constexpr uint32_t BEEP_FREQUENCY_HZ = 2000;
 constexpr uint8_t BEEP_DUTY = 180;
 constexpr uint32_t STARTUP_BEEP_DURATION_MS = 200;
+constexpr uint32_t CONFIRM_BEEP_DURATION_MS = 150;
 
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -23,6 +24,9 @@ unsigned long startupTestStartMs = 0;
 bool startupBeepActive = false;
 bool startupBeepComplete = false;
 unsigned long startupBeepStartMs = 0;
+
+bool confirmBeepActive = false;
+unsigned long confirmBeepStartMs = 0;
 bool ledcConfigured = false;
 
 void beginTone() {
@@ -100,9 +104,31 @@ void updateStartupBeep() {
   }
 }
 
+void startConfirmationBeep() {
+  confirmBeepActive = true;
+  confirmBeepStartMs = millis();
+
+  digitalWrite(AMP_ENABLE_PIN, LOW);
+  beginTone();
+}
+
+void updateConfirmationBeep() {
+  if (!confirmBeepActive) {
+    return;
+  }
+
+  const unsigned long now = millis();
+  if (now - confirmBeepStartMs >= CONFIRM_BEEP_DURATION_MS) {
+    endTone();
+    digitalWrite(AMP_ENABLE_PIN, HIGH);
+    confirmBeepActive = false;
+  }
+}
+
 void updateEffects() {
   // Run startup self-checks; future animations will also update here.
   updateStartupTest();
   updateStartupBeep();
+  updateConfirmationBeep();
 }
 }  // namespace effects

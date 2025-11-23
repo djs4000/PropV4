@@ -11,7 +11,7 @@ constexpr uint32_t API_POST_INTERVAL_MS = 500;      // 500ms for live
 #endif
 constexpr uint32_t API_TIMEOUT_MS = 10000;           // 10s
 constexpr uint32_t BUTTON_HOLD_MS = 3000;            // 3s for arming/reset
-constexpr uint32_t IR_CONFIRM_WINDOW_MS = 2000;      // 2s IR confirmation window
+constexpr uint32_t IR_CONFIRM_WINDOW_MS = 5000;      // 5s IR confirmation window
 constexpr uint8_t DEFUSE_CODE_LENGTH = 4;            // digits
 constexpr uint8_t MAX_WIFI_RETRIES = 10;             // WiFi attempts
 

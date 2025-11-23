@@ -1,5 +1,6 @@
 #include "state_machine.h"
 
+#include "effects.h"
 #include "game_config.h"
 #include "inputs.h"
 #include "network.h"
@@ -117,6 +118,7 @@ void updateState() {
 
       if (irWindowActive) {
         if (consumeIrConfirmation()) {
+          effects::startConfirmationBeep();
           setState(ARMED);
           resetArmingFlow();
           stopButtonHold();
