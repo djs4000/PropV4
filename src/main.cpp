@@ -49,7 +49,7 @@ static void renderMainUiIfNeeded(FlameState state) {
     armingProgress = static_cast<float>(elapsed) / static_cast<float>(BUTTON_HOLD_MS);
     armingProgress = constrain(armingProgress, 0.0f, 1.0f);
   }
-  const String defuseBuffer = (state == ARMED) ? String(inputs::getDefuseBuffer()) : String("");
+  const String defuseBuffer = (state == ARMED) ? String(getDefuseBuffer()) : String("");
   uint32_t remainingMs = configuredBombDurationMs;
   if (state == ARMED && isBombTimerActive()) {
     remainingMs = getBombTimerRemainingMs();
@@ -95,7 +95,7 @@ static void renderMainUiIfNeeded(FlameState state) {
   if (shouldRender) {
     const uint8_t enteredDigits = (state == ARMED) ? getEnteredDigits() : 0;
     ui::renderState(state, configuredBombDurationMs, remainingMs, armingProgress, DEFUSE_CODE_LENGTH,
-                    enteredDigits, inputs::getDefuseBuffer());
+                    enteredDigits, getDefuseBuffer());
     lastRenderedState = state;
     lastRenderedRemainingMs = remainingMs;
     lastRenderedRemainingCs = remainingCentiseconds;
