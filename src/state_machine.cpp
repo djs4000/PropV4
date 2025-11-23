@@ -167,7 +167,7 @@ void updateState() {
     setMatchStatus(network::getRemoteMatchStatus());
   }
 
-  const bool gameOver = isGameOverStatus(currentMatchStatus);
+  const bool gameOver = isGameOverStatus(currentMatchStatus) && currentState != DEFUSED && currentState != DETONATED;
   ui::setGameOver(gameOver);
   if (gameOver) {
     gameTimerValid = false;
@@ -177,7 +177,7 @@ void updateState() {
     bombTimerRemainingMs = 0;
     resetArmingFlow();
     stopButtonHold();
-    if (currentState != READY && currentState != ON) {
+    if (currentState == ARMED || currentState == ARMING || currentState == ACTIVE) {
       setState(READY);
       return;
     }
@@ -264,20 +264,19 @@ void updateState() {
       break;
 
     case ARMED:
-      if (currentMatchStatus == Completed || currentMatchStatus == Cancelled ||
-          currentMatchStatus == WaitingOnFinalData) {
+      if (currentMatchStatus == WaitingOnStart || currentMatchStatus == Countdown) {
         setState(READY);
       }
       break;
 
     case DEFUSED:
-      if (currentMatchStatus == WaitingOnStart) {
+      if (currentMatchStatus == WaitingOnStart || currentMatchStatus == Countdown) {
         setState(READY);
       }
       break;
 
     case DETONATED:
-      if (currentMatchStatus == WaitingOnStart) {
+      if (currentMatchStatus == WaitingOnStart || currentMatchStatus == Countdown) {
         setState(READY);
       }
       break;

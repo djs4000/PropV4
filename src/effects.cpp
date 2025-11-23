@@ -66,9 +66,14 @@ uint16_t mapRowColToIndex(uint8_t row, uint8_t col) {
   if (row >= LED_MATRIX_ROWS || col >= LED_MATRIX_COLS) {
     return 0;
   }
-  const bool reverse = (row % 2) == 1;  // serpentine wiring around the cylinder
-  const uint8_t mappedCol = reverse ? (LED_MATRIX_COLS - 1 - col) : col;
-  return static_cast<uint16_t>(row) * LED_MATRIX_COLS + mappedCol;
+
+  // Physical wiring snakes column by column around the cylinder, starting near
+  // the bottom of column 0 and climbing up. Even columns count bottom-to-top,
+  // odd columns top-to-bottom. This keeps row 0 at the physical bottom and
+  // matches observed wiring like: 8, 9, 26, 27...
+  const bool columnReverse = (col % 2) == 1;
+  const uint8_t mappedRow = columnReverse ? row : static_cast<uint8_t>(LED_MATRIX_ROWS - 1 - row);
+  return static_cast<uint16_t>(col) * LED_MATRIX_ROWS + mappedRow;
 }
 
 void updateTone() {
@@ -235,13 +240,6 @@ void handleWrongCodeBeep(uint32_t now) {
     return;
   }
 
-  if (wrongCodeBeep.step == 0) {
-    effects::playBeep(850, 80, 150);
-    wrongCodeBeep.step = 1;
-    wrongCodeBeep.nextBeepMs = now + 160;
-    return;
-  }
-
   if (wrongCodeBeep.step == 1) {
     effects::playBeep(850, 80, 150);
     wrongCodeBeep.step = 2;
@@ -347,8 +345,9 @@ void onKeypadKey() { playBeep(900, 40, 140); }
 
 void onWrongCode() {
   wrongCodeBeep.active = true;
-  wrongCodeBeep.step = 0;
-  wrongCodeBeep.nextBeepMs = millis();
+  wrongCodeBeep.step = 1;
+  wrongCodeBeep.nextBeepMs = millis() + 160;
+  playBeep(850, 80, 150);
 }
 
 void onArmingConfirmed() { playBeep(2200, 200); }

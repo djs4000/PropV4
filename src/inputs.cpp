@@ -106,13 +106,16 @@ void handleDigitPress(char digit) {
     return;
   }
 
+  bool digitAdded = false;
   if (enteredDigits < DEFUSE_CODE_LENGTH) {
+    // Provide immediate feedback on accepted numeric keypresses while armed.
+    effects::onKeypadKey();
     defuseBuffer[enteredDigits++] = digit;
     defuseBuffer[enteredDigits] = '\0';
-    effects::onKeypadKey();
+    digitAdded = true;
   }
 
-  if (enteredDigits >= DEFUSE_CODE_LENGTH) {
+  if (digitAdded && enteredDigits >= DEFUSE_CODE_LENGTH) {
     const String &configured = network::getConfiguredDefuseCode();
     const bool matches = configured.length() == DEFUSE_CODE_LENGTH && configured.equals(defuseBuffer);
 
