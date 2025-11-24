@@ -65,14 +65,19 @@ uint16_t mapRowColToIndex(uint8_t row, uint8_t col) {
     return 0;
   }
 
-  // Matrix begins after an 8-LED lead. Wiring interleaves two columns per
-  // strip such that row data for a column pair is adjacent in memory. Rows are
-  // counted from bottom (0) to top. Example bottom row indices: 8, 9, 26, 27.
-  const uint8_t pair = col / 2;
-  const bool secondInPair = (col % 2) == 1;
-  const uint16_t base = LED_START_OFFSET + static_cast<uint16_t>(pair) * (LED_MATRIX_ROWS * 2);
-  const uint16_t indexWithinPair = static_cast<uint16_t>(row) * 2 + (secondInPair ? 1 : 0);
-  return base + indexWithinPair;
+  // Columns snake around the cylinder: even columns run top->bottom, odd
+  // columns bottom->top. Rows are counted from bottom (0) to top (LED index
+  // order starts at the top of column 0). This yields bottom-row indices
+  // 8, 9, 26, 27, 44, 45, 62, 63 and top-row indices 0, 17, 18, 35, 36, 53,
+  // 54, 71 across the eight columns.
+  const uint8_t physicalRow = LED_MATRIX_ROWS - 1 - row;  // convert to top-based
+  const uint16_t columnStart = static_cast<uint16_t>(col) * LED_MATRIX_ROWS + LED_START_OFFSET;
+
+  if ((col % 2) == 0) {
+    return columnStart + physicalRow;  // even columns: top->bottom
+  }
+
+  return columnStart + (LED_MATRIX_ROWS - 1 - physicalRow);  // odd columns: bottom->top
 }
 
 void updateTone() {
@@ -177,22 +182,7 @@ void renderError(uint32_t now) {
   fillAll(COLOR_ERROR, wave);
 }
 
-void handleArmedBeeps(uint32_t now, FlameState state) {
-  if (state != ARMED || !isBombTimerActive()) {
-    return;
-  }
-  const uint32_t remaining = getBombTimerRemainingMs();
-  uint32_t interval = 0;
-  if (remaining <= 3000) {
-    interval = COUNTDOWN_BEEP_FAST_INTERVAL_MS;
-  } else if (remaining <= 10000) {
-    interval = COUNTDOWN_BEEP_INTERVAL_MS;
-  }
-  if (interval > 0 && now - lastArmedBeepMs >= interval) {
-    effects::playBeep(2000, 150);
-    lastArmedBeepMs = now;
-  }
-}
+void handleArmedBeeps(uint32_t /*now*/, FlameState /*state*/) { /* countdown beeps disabled */ }
 
 void handleWrongCodeBeep(uint32_t now) {
   if (!wrongCodeBeep.active) {
@@ -208,7 +198,7 @@ void handleWrongCodeBeep(uint32_t now) {
   }
 
   if (wrongCodeBeep.step == 1) {
-    effects::playBeep(720, 140, 200);
+    effects::playBeep(900, 160, 255);
     wrongCodeBeep.step = 2;
     wrongCodeBeep.nextBeepMs = now + 180;
     return;
@@ -307,13 +297,13 @@ void onStateChanged(FlameState oldState, FlameState newState) {
   }
 }
 
-void onKeypadKey() { playBeep(1200, 80, 200); }
+void onKeypadKey() { playBeep(1800, 90, 255); }
 
 void onWrongCode() {
   wrongCodeBeep.active = true;
   wrongCodeBeep.step = 1;
-  playBeep(700, 140, 220);
-  wrongCodeBeep.nextBeepMs = toneState.endMs + 120;
+  playBeep(1800, 140, 255);
+  wrongCodeBeep.nextBeepMs = toneState.endMs + 140;
 }
 
 void onArmingConfirmed() { playBeep(2200, 200); }
