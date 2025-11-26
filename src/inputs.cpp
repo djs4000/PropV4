@@ -31,6 +31,7 @@ constexpr char KEY_MAP[4][4] = {{'1', '2', '3', 'A'},
 char defuseBuffer[DEFUSE_CODE_LENGTH + 1] = {0};
 uint8_t enteredDigits = 0;
 FlameState lastState = ON;
+uint32_t keypadLockedUntilMs = 0;
 
 bool lastButtonsRaw = false;
 bool debouncedButtons = false;
@@ -106,19 +107,24 @@ void handleDigitPress(char digit) {
     return;
   }
 
+  bool digitAdded = false;
   if (enteredDigits < DEFUSE_CODE_LENGTH) {
+    // Provide immediate feedback on accepted numeric keypresses while armed.
+    effects::onKeypadKey();
     defuseBuffer[enteredDigits++] = digit;
     defuseBuffer[enteredDigits] = '\0';
+    digitAdded = true;
   }
 
-  if (enteredDigits >= DEFUSE_CODE_LENGTH) {
+  if (digitAdded && enteredDigits >= DEFUSE_CODE_LENGTH) {
     const String &configured = network::getConfiguredDefuseCode();
     const bool matches = configured.length() == DEFUSE_CODE_LENGTH && configured.equals(defuseBuffer);
 
     if (matches) {
       setState(DEFUSED);
     } else {
-      // TODO: play a short error tone via effects module.
+      effects::onWrongCode();
+      keypadLockedUntilMs = millis() + effects::getWrongCodeBeepDurationMs();
     }
 
     resetDefuseBuffer();
@@ -144,6 +150,8 @@ bool consumeIrConfirmation() {
   }
   return false;
 }
+
+void clearIrConfirmation() { irConfirmationPending = false; }
 
 void initInputs() {
   Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ);
@@ -191,26 +199,36 @@ void updateInputs() {
     }
   }
 
-  // Debounce keypad entries to build the defuse code buffer.
-  const char rawKey = scanKeypadRaw();
-  if (rawKey != lastKeyRaw) {
-    keyChangeMs = now;
-    lastKeyRaw = rawKey;
-  }
-
-  if (now - keyChangeMs >= KEY_DEBOUNCE_MS && debouncedKey != rawKey) {
-    debouncedKey = rawKey;
-#ifdef APP_DEBUG
-    if (debouncedKey != '\0') {
-      Serial.print("KEYPAD: ");
-      Serial.println(debouncedKey);
+  // Debounce keypad entries to build the defuse code buffer, unless locked
+  // while error tones play.
+  if (now < keypadLockedUntilMs) {
+    lastKeyRaw = '\0';
+    debouncedKey = '\0';
+    writePcf(KEYPAD_ADDR, 0xFF);
+  } else {
+    const char rawKey = scanKeypadRaw();
+    if (rawKey != lastKeyRaw) {
+      keyChangeMs = now;
+      lastKeyRaw = rawKey;
     }
+
+    if (now - keyChangeMs >= KEY_DEBOUNCE_MS && debouncedKey != rawKey) {
+      debouncedKey = rawKey;
+#ifdef APP_DEBUG
+      if (debouncedKey != '\0') {
+        Serial.print("KEYPAD: ");
+        Serial.println(debouncedKey);
+      }
 #endif
-    if (debouncedKey >= '0' && debouncedKey <= '9') {
-      effects::onKeypadKey();
-      handleDigitPress(debouncedKey);
+      if (debouncedKey >= '0' && debouncedKey <= '9') {
+        handleDigitPress(debouncedKey);
+      }
     }
   }
 }
 
 uint8_t getEnteredDigits() { return enteredDigits; }
+
+const char *getDefuseBuffer() { return defuseBuffer; }
+
+void clearDefuseBuffer() { resetDefuseBuffer(); }

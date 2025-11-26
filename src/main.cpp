@@ -25,6 +25,7 @@ static FlameState lastRenderedState = ON;
 static uint32_t lastRenderedRemainingMs = 0;
 static uint32_t lastRenderedRemainingCs = 0;
 static float lastRenderedArmingProgress = -1.0f;
+static String lastRenderedDefuseBuffer;
 static bool configScreenRendered = false;
 
 static void renderBootScreenIfNeeded() {
@@ -48,6 +49,7 @@ static void renderMainUiIfNeeded(FlameState state) {
     armingProgress = static_cast<float>(elapsed) / static_cast<float>(BUTTON_HOLD_MS);
     armingProgress = constrain(armingProgress, 0.0f, 1.0f);
   }
+  const String defuseBuffer = (state == ARMED) ? String(getDefuseBuffer()) : String("");
   uint32_t remainingMs = configuredBombDurationMs;
   if (state == ARMED && isBombTimerActive()) {
     remainingMs = getBombTimerRemainingMs();
@@ -60,6 +62,13 @@ static void renderMainUiIfNeeded(FlameState state) {
   const uint32_t lastRenderedCentiseconds = lastRenderedRemainingCs;
 
   bool shouldRender = false;
+  bool digitsChanged = false;
+
+  if (state == ARMED) {
+    digitsChanged = defuseBuffer != lastRenderedDefuseBuffer;
+  } else if (!lastRenderedDefuseBuffer.isEmpty()) {
+    digitsChanged = true;
+  }
 
   if (state == READY && !mainScreenInitialized) {
     ui::initMainScreen();
@@ -79,18 +88,19 @@ static void renderMainUiIfNeeded(FlameState state) {
                                              (lastRenderedCentiseconds - remainingCentiseconds) >= 5);
 
   if (state != lastRenderedState || remainingSeconds != lastRenderedSeconds || centisecondChangedEnough ||
-      armingProgress != lastRenderedArmingProgress) {
+      armingProgress != lastRenderedArmingProgress || digitsChanged) {
     shouldRender = true;
   }
 
   if (shouldRender) {
     const uint8_t enteredDigits = (state == ARMED) ? getEnteredDigits() : 0;
     ui::renderState(state, configuredBombDurationMs, remainingMs, armingProgress, DEFUSE_CODE_LENGTH,
-                    enteredDigits);
+                    enteredDigits, getDefuseBuffer());
     lastRenderedState = state;
     lastRenderedRemainingMs = remainingMs;
     lastRenderedRemainingCs = remainingCentiseconds;
     lastRenderedArmingProgress = armingProgress;
+    lastRenderedDefuseBuffer = (state == ARMED) ? defuseBuffer : String("");
   }
 }
 

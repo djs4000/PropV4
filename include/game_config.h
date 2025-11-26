@@ -39,10 +39,13 @@ enum class ApiMode {
 
 inline ApiMode getApiMode() { return ApiMode::FullOnline; }
 
-// LED matrix configuration for the WS2812B strip wrapped as a cylinder.
-constexpr uint8_t LED_MATRIX_ROWS = 14;   // height
+// LED matrix configuration for the WS2812B strip wrapped as a cylinder. The
+// current build is 9 rows high and 8 columns around with no leading pixels
+// before the matrix.
+constexpr uint8_t LED_MATRIX_ROWS = 9;    // height
 constexpr uint8_t LED_MATRIX_COLS = 8;    // circumference columns
-constexpr uint16_t LED_COUNT = LED_MATRIX_ROWS * LED_MATRIX_COLS;
+constexpr uint16_t LED_START_OFFSET = 0;  // number of LEDs before the matrix
+constexpr uint16_t LED_COUNT = LED_MATRIX_ROWS * LED_MATRIX_COLS + LED_START_OFFSET;
 
 struct RgbColor {
   uint8_t r;
@@ -62,7 +65,9 @@ constexpr RgbColor COLOR_BOOT = {255, 200, 40};        // bright yellow for boot
 
 // Timing controls for LED/audio effects.
 constexpr uint32_t EFFECTS_FRAME_INTERVAL_MS = 30;       // base frame cadence
-constexpr uint32_t COUNTDOWN_BEEP_INTERVAL_MS = 1000;     // 1s beeps
-constexpr uint32_t COUNTDOWN_BEEP_FAST_INTERVAL_MS = 500; // faster cadence near zero
+constexpr uint32_t COUNTDOWN_BEEP_INTERVAL_MS = 1000;      // 1s beeps (slow cadence)
+constexpr uint32_t COUNTDOWN_BEEP_START_THRESHOLD_MS = 10000; // begin slow beeps when remaining is under this
+constexpr uint32_t COUNTDOWN_BEEP_FAST_INTERVAL_MS = 500;  // faster cadence near zero
+constexpr uint32_t COUNTDOWN_BEEP_FAST_THRESHOLD_MS = 5000; // switch to fast cadence when remaining is below this
 constexpr uint32_t DETONATED_EFFECT_DURATION_MS = 10000;
 constexpr uint32_t DEFUSED_EFFECT_DURATION_MS = 5000;

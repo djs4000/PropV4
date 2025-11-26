@@ -11,9 +11,11 @@ void update(uint32_t now);
 void onBoot();                 // boot beep + flash
 void onStateChanged(FlameState oldState, FlameState newState);
 void onKeypadKey();            // short click beep
+void onWrongCode();            // double beep for incorrect code
 void onArmingConfirmed();      // IR-confirmed arm beep
 void setArmingProgress(float progress01);
+uint16_t getWrongCodeBeepDurationMs();
 
 // Simple tone helper.
-void playBeep(uint16_t frequencyHz, uint16_t durationMs, uint8_t volume = 200);
+void playBeep(uint16_t frequencyHz, uint16_t durationMs, uint8_t volume = 200, bool sawtooth = false);
 }  // namespace effects
