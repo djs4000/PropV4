@@ -16,5 +16,5 @@ void onArmingConfirmed();      // IR-confirmed arm beep
 void setArmingProgress(float progress01);
 
 // Simple tone helper.
-void playBeep(uint16_t frequencyHz, uint16_t durationMs, uint8_t volume = 200);
+void playBeep(uint16_t frequencyHz, uint16_t durationMs, uint8_t volume = 200, bool sawtooth = false);
 }  // namespace effects

@@ -67,5 +67,6 @@ constexpr RgbColor COLOR_BOOT = {255, 200, 40};        // bright yellow for boot
 constexpr uint32_t EFFECTS_FRAME_INTERVAL_MS = 30;       // base frame cadence
 constexpr uint32_t COUNTDOWN_BEEP_INTERVAL_MS = 1000;     // 1s beeps
 constexpr uint32_t COUNTDOWN_BEEP_FAST_INTERVAL_MS = 500; // faster cadence near zero
+constexpr uint32_t COUNTDOWN_BEEP_FAST_THRESHOLD_MS = 3000; // switch to fast cadence when remaining is below this
 constexpr uint32_t DETONATED_EFFECT_DURATION_MS = 10000;
 constexpr uint32_t DEFUSED_EFFECT_DURATION_MS = 5000;

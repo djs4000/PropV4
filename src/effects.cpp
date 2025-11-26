@@ -33,6 +33,9 @@ struct ToneState {
   uint16_t frequency = 0;
   uint32_t endMs = 0;
   uint8_t volume = 0;
+  uint32_t startMs = 0;
+  bool sawtooth = false;
+  uint16_t periodMs = 0;
 };
 
 ToneState toneState;
@@ -65,19 +68,18 @@ uint16_t mapRowColToIndex(uint8_t row, uint8_t col) {
     return 0;
   }
 
-  // Columns snake around the cylinder: even columns run top->bottom, odd
-  // columns bottom->top. Rows are counted from bottom (0) to top (LED index
-  // order starts at the top of column 0). This yields bottom-row indices
-  // 8, 9, 26, 27, 44, 45, 62, 63 and top-row indices 0, 17, 18, 35, 36, 53,
-  // 54, 71 across the eight columns.
-  const uint8_t physicalRow = LED_MATRIX_ROWS - 1 - row;  // convert to top-based
-  const uint16_t columnStart = static_cast<uint16_t>(col) * LED_MATRIX_ROWS + LED_START_OFFSET;
+  // Measured physical mapping (bottom row: 8,9,26,27,44,45,62,63 / top row:
+  // 0,17,18,35,36,56,54,71) requires a column-specific interpolation rather
+  // than a simple serpentine assumption. Each column uses the measured bottom
+  // and top indices and interpolates linearly through the remaining rows to
+  // approximate the zigzag wiring while keeping a bottom->top fill order.
+  static const uint16_t bottomRowIndices[LED_MATRIX_COLS] = {8, 9, 26, 27, 44, 45, 62, 63};
+  static const uint16_t topRowIndices[LED_MATRIX_COLS] = {0, 17, 18, 35, 36, 56, 54, 71};
 
-  if ((col % 2) == 0) {
-    return columnStart + physicalRow;  // even columns: top->bottom
-  }
-
-  return columnStart + (LED_MATRIX_ROWS - 1 - physicalRow);  // odd columns: bottom->top
+  const float step = static_cast<float>(topRowIndices[col] - bottomRowIndices[col]) /
+                     static_cast<float>(LED_MATRIX_ROWS - 1);
+  const uint16_t mapped = static_cast<uint16_t>(lroundf(bottomRowIndices[col] + step * row));
+  return mapped;
 }
 
 void updateTone() {
@@ -93,6 +95,18 @@ void updateTone() {
     digitalWrite(AMP_ENABLE_PIN, HIGH);
     toneState.active = false;
     return;
+  }
+
+  if (toneState.sawtooth) {
+    // Sawtooth amplitude ramp at the requested frequency (periodMs).
+    const uint32_t elapsed = nowMs - toneState.startMs;
+    const uint16_t phaseMs = toneState.periodMs == 0 ? 0 : (elapsed % toneState.periodMs);
+    const float phase = toneState.periodMs == 0 ? 0.0f
+                                                : static_cast<float>(phaseMs) / static_cast<float>(toneState.periodMs);
+    const uint8_t duty = static_cast<uint8_t>(constrain(static_cast<float>(toneState.volume) * phase, 0.0f, 255.0f));
+    ledcWriteTone(AUDIO_CHANNEL, toneState.frequency);
+    ledcWrite(AUDIO_CHANNEL, duty);
+    digitalWrite(AMP_ENABLE_PIN, LOW);
   }
 }
 
@@ -198,12 +212,17 @@ void handleWrongCodeBeep(uint32_t now) {
   }
 
   if (wrongCodeBeep.step == 1) {
-    effects::playBeep(900, 160, 255);
+    effects::playBeep(2000, 140, 255);
     wrongCodeBeep.step = 2;
     wrongCodeBeep.nextBeepMs = now + 180;
     return;
   }
 
+  // Second beep: low sawtooth growl.
+  const uint16_t sawFrequencyHz = 90;
+  const uint16_t sawDurationMs = 220;
+  const uint8_t sawVolume = 255;
+  effects::playBeep(sawFrequencyHz, sawDurationMs, sawVolume, /*sawtooth=*/true);
   wrongCodeBeep.active = false;
 }
 }  // namespace
@@ -297,7 +316,7 @@ void onStateChanged(FlameState oldState, FlameState newState) {
   }
 }
 
-void onKeypadKey() { playBeep(1800, 90, 255); }
+void onKeypadKey() { playBeep(1200, 140, 255); }
 
 void onWrongCode() {
   wrongCodeBeep.active = true;
@@ -310,7 +329,7 @@ void onArmingConfirmed() { playBeep(2200, 200); }
 
 void setArmingProgress(float progress01) { armingProgress01 = constrain(progress01, 0.0f, 1.0f); }
 
-void playBeep(uint16_t frequencyHz, uint16_t durationMs, uint8_t volume) {
+void playBeep(uint16_t frequencyHz, uint16_t durationMs, uint8_t volume, bool sawtooth) {
   if (frequencyHz == 0 || durationMs == 0) {
     return;
   }
@@ -318,6 +337,17 @@ void playBeep(uint16_t frequencyHz, uint16_t durationMs, uint8_t volume) {
   toneState.frequency = frequencyHz;
   toneState.endMs = millis() + durationMs;
   toneState.volume = constrain(volume, static_cast<uint8_t>(0), static_cast<uint8_t>(255));
+  toneState.startMs = millis();
+  toneState.sawtooth = sawtooth;
+  toneState.periodMs = (frequencyHz == 0) ? 0 : static_cast<uint16_t>(max<uint32_t>(1, 1000UL / frequencyHz));
+
+  if (sawtooth) {
+    ledcWriteTone(AUDIO_CHANNEL, toneState.frequency);
+    ledcWrite(AUDIO_CHANNEL, 0);
+    digitalWrite(AMP_ENABLE_PIN, LOW);
+    return;
+  }
+
   ledcWriteTone(AUDIO_CHANNEL, toneState.frequency);
   ledcWrite(AUDIO_CHANNEL, toneState.volume);
   digitalWrite(AMP_ENABLE_PIN, LOW);
