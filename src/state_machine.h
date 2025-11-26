@@ -48,6 +48,7 @@ void startButtonHold();
 void stopButtonHold();
 bool isButtonHoldActive();
 uint32_t getButtonHoldStartMs();
+bool isIrConfirmationWindowActive();
 
 // Utility conversion helpers
 const char *flameStateToString(FlameState state);

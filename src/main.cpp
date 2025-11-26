@@ -49,6 +49,7 @@ static void renderMainUiIfNeeded(FlameState state) {
     armingProgress = static_cast<float>(elapsed) / static_cast<float>(BUTTON_HOLD_MS);
     armingProgress = constrain(armingProgress, 0.0f, 1.0f);
   }
+  const bool awaitingIrConfirm = state == ARMING && isIrConfirmationWindowActive();
   const String defuseBuffer = (state == ARMED) ? String(getDefuseBuffer()) : String("");
   uint32_t remainingMs = configuredBombDurationMs;
   if (state == ARMED && isBombTimerActive()) {
@@ -81,6 +82,16 @@ static void renderMainUiIfNeeded(FlameState state) {
   }
 
   effects::setArmingProgress(armingProgress);
+
+  if (awaitingIrConfirm) {
+    ui::showArmingConfirmPrompt();
+    lastRenderedState = state;
+    lastRenderedRemainingMs = remainingMs;
+    lastRenderedRemainingCs = remainingCentiseconds;
+    lastRenderedArmingProgress = armingProgress;
+    lastRenderedDefuseBuffer = (state == ARMED) ? defuseBuffer : String("");
+    return;
+  }
 
   const bool centisecondChangedEnough = state == ARMED && isBombTimerActive() &&
                                         (remainingCentiseconds > lastRenderedCentiseconds ?

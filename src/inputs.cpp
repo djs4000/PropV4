@@ -137,8 +137,14 @@ static bool irConfirmationPending = false;
 void initIr() { IrReceiver.begin(27, ENABLE_LED_FEEDBACK); }
 
 void updateIr() {
+  // Only treat a decode as a valid confirmation when the arming confirmation
+  // window is active to avoid stale/unrelated IR noise auto-confirming arming
+  // on plug-in.
   if (IrReceiver.decode()) {
-    irConfirmationPending = true;
+    const bool validPayload = IrReceiver.decodedIRData.protocol != UNKNOWN && IrReceiver.decodedIRData.numberOfBits > 0;
+    if (validPayload && getState() == ARMING && isIrConfirmationWindowActive()) {
+      irConfirmationPending = true;
+    }
     IrReceiver.resume();
   }
 }
