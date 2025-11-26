@@ -28,6 +28,11 @@ bool detonatedActive = false;
 
 uint32_t lastArmedBeepMs = 0;
 
+// Keep the countdown beep level consistent with the confirmation chirp that
+// plays when ARMED becomes active so operators can hear the last-10s alert.
+constexpr uint16_t COUNTDOWN_BEEP_DURATION_MS = 200;
+constexpr uint8_t COUNTDOWN_BEEP_VOLUME = 200;
+
 struct ToneState {
   bool active = false;
   uint16_t frequency = 0;
@@ -236,8 +241,8 @@ void handleArmedBeeps(uint32_t now, FlameState state) {
   }
 
   lastArmedBeepMs = now;
-  // Short, boot-style chirp to match the startup tone timbre while keeping it brief.
-  effects::playBeep(1500, 80, 255);
+  // Short, boot-style chirp to match the arming confirmation volume for better audibility.
+  effects::playBeep(1500, COUNTDOWN_BEEP_DURATION_MS, COUNTDOWN_BEEP_VOLUME);
 }
 
 void handleWrongCodeBeep(uint32_t now) {

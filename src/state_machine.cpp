@@ -309,6 +309,8 @@ bool isButtonHoldActive() { return armingHoldActive; }
 
 uint32_t getButtonHoldStartMs() { return armingHoldStartMs; }
 
+bool isIrConfirmationWindowActive() { return irWindowActive; }
+
 void setMatchStatus(MatchStatus status) { currentMatchStatus = status; }
 
 MatchStatus getMatchStatus() { return currentMatchStatus; }
