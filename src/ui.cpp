@@ -446,24 +446,27 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   }
 
   const bool stateChanged = (state != lastRenderedState);
-  const float clampedProgress = (state == ARMING) ? constrain(armingProgress01, 0.0f, 1.0f) : 0.0f;
+  const bool barActive = (state == ARMING) || (state == ARMED);
+  const float clampedProgress =
+      (state == ARMING) ? constrain(armingProgress01, 0.0f, 1.0f) : ((state == ARMED) ? 1.0f : 0.0f);
   const int16_t innerWidth = BAR_WIDTH - 2 * BAR_BORDER;
-  const int16_t desiredFill = (state == ARMING)
-                                  ? static_cast<int16_t>(innerWidth * clampedProgress)
-                                  : 0;
-  const int16_t quantizedFill = static_cast<int16_t>((desiredFill / ARMING_BAR_CHUNK_PX) * ARMING_BAR_CHUNK_PX);
+  const int16_t desiredFill = barActive ? static_cast<int16_t>(innerWidth * clampedProgress) : 0;
+  const int16_t quantizedFill =
+      (state == ARMING)
+          ? static_cast<int16_t>((desiredFill / ARMING_BAR_CHUNK_PX) * ARMING_BAR_CHUNK_PX)
+          : desiredFill;
   const bool progressChanged = std::fabs(clampedProgress - lastArmingProgress) >= 0.01f;
   const bool timeElapsed = (now - lastArmingBarUpdateMs) >= ARMING_BAR_FRAME_INTERVAL_MS;
   uint16_t armingColor = FOREGROUND_COLOR;
-  if (state == ARMING) {
-    if (clampedProgress >= 0.75f) {
+  if (state == ARMING || state == ARMED) {
+    if (state == ARMED || clampedProgress >= 0.75f) {
       armingColor = ARMING_BAR_RED;
     } else if (clampedProgress >= 0.5f) {
       armingColor = ARMING_BAR_YELLOW;
     }
   }
 
-  if (stateChanged && state != ARMING && lastBarFill > 0) {
+  if (stateChanged && !barActive && lastBarFill > 0) {
     tft.fillRect(barX() + BAR_BORDER, BAR_Y + BAR_BORDER, innerWidth, BAR_HEIGHT - 2 * BAR_BORDER,
                  BACKGROUND_COLOR);
     lastBarFill = 0;
@@ -472,7 +475,7 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     lastArmingColor = FOREGROUND_COLOR;
   }
 
-  if (state == ARMING &&
+  if (barActive &&
       (progressChanged || timeElapsed || stateChanged || lastBarFill == -1 || armingColor != lastArmingColor)) {
     const int16_t clampedFill = constrain(quantizedFill, static_cast<int16_t>(0), innerWidth);
     const int16_t fillY = BAR_Y + BAR_BORDER;

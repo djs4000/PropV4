@@ -12,6 +12,7 @@ void onBoot();                 // boot beep + flash
 void onStateChanged(FlameState oldState, FlameState newState);
 void onKeypadKey();            // short click beep
 void onWrongCode();            // double beep for incorrect code
+void onArmingConfirmNeeded();  // short beep when IR confirmation is requested
 void onArmingConfirmed();      // IR-confirmed arm beep
 void setArmingProgress(float progress01);
 uint16_t getWrongCodeBeepDurationMs();
