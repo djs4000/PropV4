@@ -236,7 +236,8 @@ void handleArmedBeeps(uint32_t now, FlameState state) {
   }
 
   lastArmedBeepMs = now;
-  effects::playBeep(1500, 120, 255);
+  // Short, boot-style chirp to match the startup tone timbre while keeping it brief.
+  effects::playBeep(1500, 80, 160);
 }
 
 void handleWrongCodeBeep(uint32_t now) {
