@@ -30,8 +30,10 @@ uint32_t lastArmedBeepMs = 0;
 
 // Keep the countdown beep level consistent with the confirmation chirp that
 // plays when ARMED becomes active so operators can hear the last-10s alert.
-constexpr uint16_t COUNTDOWN_BEEP_DURATION_MS = 200;
+constexpr uint16_t COUNTDOWN_BEEP_DURATION_MS = 100;
 constexpr uint8_t COUNTDOWN_BEEP_VOLUME = 200;
+constexpr uint16_t IR_CONFIRM_PROMPT_BEEP_MS = 120;
+constexpr uint16_t IR_CONFIRM_PROMPT_BEEP_FREQ = 1500;
 
 struct ToneState {
   bool active = false;
@@ -53,14 +55,12 @@ struct DoubleBeepState {
 
 DoubleBeepState wrongCodeBeep;
 
-// Wrong-code beep cadence (high tone → short pause → mid tone → pause → 90 Hz
-// sawtooth). Expose the aggregate so keypad handling can lock out entries
-// while the alert plays.
-constexpr uint16_t WRONG_CODE_FIRST_TONE_MS = 140;
-constexpr uint16_t WRONG_CODE_GAP1_MS = 140;
-constexpr uint16_t WRONG_CODE_SECOND_TONE_MS = 140;
-constexpr uint16_t WRONG_CODE_GAP2_MS = 180;
-constexpr uint16_t WRONG_CODE_FINAL_TONE_MS = 220;
+// Wrong-code beep cadence: two low 90 Hz growls separated by a short pause.
+// Expose the aggregate so keypad handling can lock out entries while the alert
+// plays.
+constexpr uint16_t WRONG_CODE_TONE_MS = 220;
+constexpr uint16_t WRONG_CODE_TONE_FREQ_HZ = 90;
+constexpr uint16_t WRONG_CODE_GAP_MS = 140;
 
 uint32_t colorToPixel(const RgbColor &c, float scale = 1.0f) {
   scale = constrain(scale, 0.0f, 1.0f);
@@ -258,19 +258,16 @@ void handleWrongCodeBeep(uint32_t now) {
     return;
   }
 
-  if (wrongCodeBeep.step == 1) {
-    effects::playBeep(2000, WRONG_CODE_SECOND_TONE_MS, 255);
-    wrongCodeBeep.step = 2;
-    wrongCodeBeep.nextBeepMs = now + WRONG_CODE_GAP2_MS;
-    return;
+  if (wrongCodeBeep.step == 2) {
+    // Second beep: repeat the low growl.
+    const uint16_t sawFrequencyHz = WRONG_CODE_TONE_FREQ_HZ;
+    const uint16_t sawDurationMs = WRONG_CODE_TONE_MS;
+    const uint8_t sawVolume = 255;
+    effects::playBeep(sawFrequencyHz, sawDurationMs, sawVolume, /*sawtooth=*/true);
   }
 
-  // Second beep: low sawtooth growl.
-  const uint16_t sawFrequencyHz = 90;
-  const uint16_t sawDurationMs = WRONG_CODE_FINAL_TONE_MS;
-  const uint8_t sawVolume = 255;
-  effects::playBeep(sawFrequencyHz, sawDurationMs, sawVolume, /*sawtooth=*/true);
   wrongCodeBeep.active = false;
+  wrongCodeBeep.step = 0;
 }
 }  // namespace
 
@@ -368,17 +365,19 @@ void onKeypadKey() { playBeep(1200, 140, 255); }
 void onWrongCode() {
   wrongCodeBeep.active = true;
   wrongCodeBeep.step = 1;
-  playBeep(1800, WRONG_CODE_FIRST_TONE_MS, 255);
-  wrongCodeBeep.nextBeepMs = toneState.endMs + WRONG_CODE_GAP1_MS;
+  playBeep(WRONG_CODE_TONE_FREQ_HZ, WRONG_CODE_TONE_MS, 255, /*sawtooth=*/true);
+  wrongCodeBeep.step = 2;
+  wrongCodeBeep.nextBeepMs = toneState.endMs + WRONG_CODE_GAP_MS;
 }
+
+void onArmingConfirmNeeded() { playBeep(IR_CONFIRM_PROMPT_BEEP_FREQ, IR_CONFIRM_PROMPT_BEEP_MS, 200); }
 
 void onArmingConfirmed() { playBeep(2200, 200); }
 
 void setArmingProgress(float progress01) { armingProgress01 = constrain(progress01, 0.0f, 1.0f); }
 
 uint16_t getWrongCodeBeepDurationMs() {
-  return WRONG_CODE_FIRST_TONE_MS + WRONG_CODE_GAP1_MS + WRONG_CODE_SECOND_TONE_MS + WRONG_CODE_GAP2_MS +
-         WRONG_CODE_FINAL_TONE_MS;
+  return (WRONG_CODE_TONE_MS * 2) + WRONG_CODE_GAP_MS;
 }
 
 void playBeep(uint16_t frequencyHz, uint16_t durationMs, uint8_t volume, bool sawtooth) {
