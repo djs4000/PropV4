@@ -236,7 +236,7 @@ void handleArmedBeeps(uint32_t now, FlameState state) {
   }
 
   lastArmedBeepMs = now;
-  playBeep(1500, 120, 255);
+  effects::playBeep(1500, 120, 255);
 }
 
 void handleWrongCodeBeep(uint32_t now) {
