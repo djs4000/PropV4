@@ -30,8 +30,11 @@ uint32_t lastArmedBeepMs = 0;
 
 // Keep the countdown beep level consistent with the confirmation chirp that
 // plays when ARMED becomes active so operators can hear the last-10s alert.
-constexpr uint16_t COUNTDOWN_BEEP_DURATION_MS = 200;
+constexpr uint16_t COUNTDOWN_BEEP_DURATION_MS = 100;
 constexpr uint8_t COUNTDOWN_BEEP_VOLUME = 200;
+
+constexpr uint16_t IR_PROMPT_BEEP_DURATION_MS = 120;
+constexpr uint16_t IR_PROMPT_BEEP_FREQUENCY_HZ = 1600;
 
 struct ToneState {
   bool active = false;
@@ -371,6 +374,8 @@ void onWrongCode() {
   playBeep(1800, WRONG_CODE_FIRST_TONE_MS, 255);
   wrongCodeBeep.nextBeepMs = toneState.endMs + WRONG_CODE_GAP1_MS;
 }
+
+void onIrConfirmationPrompt() { playBeep(IR_PROMPT_BEEP_FREQUENCY_HZ, IR_PROMPT_BEEP_DURATION_MS, 180); }
 
 void onArmingConfirmed() { playBeep(2200, 200); }
 
