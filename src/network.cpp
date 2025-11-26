@@ -2,6 +2,7 @@
 
 #include "game_config.h"
 #include "state_machine.h"
+#include "time_sync.h"
 #include "util.h"
 #include "wifi_config.h"
 
@@ -36,6 +37,8 @@ static uint32_t baseRemainingTimeMs = 0;
 static uint64_t baseRemainingTimestampMs = 0;
 static uint64_t lastApiResponseMs = 0;
 static bool apiResponseReceived = false;
+static uint32_t lastApiRequestStartMs = 0;
+static uint32_t lastSuccessfulApiDebugMs = 0;
 
 // Tracks the last POST attempt to maintain the configured cadence.
 static uint32_t lastApiPostMs = 0;
@@ -318,10 +321,16 @@ void updateApi() {
   }
   outboundTimerMs = timerMs;
 
+  const uint32_t payloadNowMs = millis();
+  int64_t timestampTicks = 0;
+  if (time_sync::isValid()) {
+    timestampTicks = time_sync::getCurrentServerTicks(payloadNowMs);
+  }
+
   JsonDocument doc;
   doc["state"] = flameStateToString(outboundState);
   doc["timer"] = outboundTimerMs;
-  doc["timestamp"] = 0;           // Placeholder; real clock will be integrated later.
+  doc["timestamp"] = timestampTicks;
 
   String payload;
   serializeJson(doc, payload);
@@ -339,6 +348,8 @@ void updateApi() {
     ~ApiRequestGuard() { state = ApiRequestState::Idle; }
     ApiRequestState &state;
   } guard(apiRequestState);
+
+  lastApiRequestStartMs = millis();
 
   HTTPClient http;
   if (!http.begin(runtimeConfig.apiEndpoint)) {
@@ -378,6 +389,12 @@ void updateApi() {
       MatchStatus parsedStatus;
       const bool statusParsed = util::parseMatchStatus(statusStr, parsedStatus);
 
+      const JsonVariantConst timestampVariant = respDoc["timestamp"];
+      if (!timestampVariant.isNull()) {
+        const int64_t serverTicks = timestampVariant.as<int64_t>();
+        time_sync::updateFromServer(serverTicks, now);
+      }
+
       const uint32_t remainingMs = respDoc["remaining_time_ms"] | 0;
       baseRemainingTimeMs = remainingMs;
       baseRemainingTimestampMs = now;
@@ -393,11 +410,27 @@ void updateApi() {
       // Treat a well-formed JSON body as a successful API interaction for timeout tracking.
       lastSuccessfulApiMs = now;
 
+      const uint32_t rttMs = now - lastApiRequestStartMs;
+
+      if (lastSuccessfulApiDebugMs != 0) {
+        const uint32_t delta = now - lastSuccessfulApiDebugMs;
+        const uint32_t intervals = delta / API_POST_INTERVAL_MS;
+        if (intervals > 1) {
+#ifdef APP_DEBUG
+          Serial.printf("[API] Missed approx %lu intervals since last success\n",
+                        static_cast<unsigned long>(intervals - 1));
+#endif
+        }
+      }
+
+      lastSuccessfulApiDebugMs = now;
+
 #ifdef APP_DEBUG
       Serial.print("API status: ");
       Serial.print(statusStr ? statusStr : "<null>");
       Serial.print(" remaining_ms=");
       Serial.println(remainingMs);
+      Serial.printf("[API] RTT: %lu ms\n", static_cast<unsigned long>(rttMs));
 #endif
     } else {
 #ifdef APP_DEBUG
