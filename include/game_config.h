@@ -60,7 +60,7 @@ constexpr RgbColor COLOR_ARMED = {220, 40, 20};        // red
 constexpr RgbColor COLOR_DEFUSED = {30, 120, 255};     // blue
 constexpr RgbColor COLOR_DETONATED = {255, 0, 0};      // bright red
 constexpr RgbColor COLOR_ERROR = {200, 0, 0};          // solid red
-constexpr RgbColor COLOR_BOOT = {255, 200, 40};        // bright yellow for boot flash
+constexpr RgbColor COLOR_BOOT = {255, 255, 255};        // bright white for boot flash
 
 // Timing controls for LED/audio effects.
 constexpr uint32_t EFFECTS_FRAME_INTERVAL_MS = 30;       // base frame cadence
