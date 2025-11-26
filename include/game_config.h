@@ -68,5 +68,10 @@ constexpr uint32_t COUNTDOWN_BEEP_INTERVAL_MS = 1000;      // 1s beeps (slow cad
 constexpr uint32_t COUNTDOWN_BEEP_START_THRESHOLD_MS = 11000; // begin slow beeps when remaining is under this
 constexpr uint32_t COUNTDOWN_BEEP_FAST_INTERVAL_MS = 500;  // faster cadence near zero
 constexpr uint32_t COUNTDOWN_BEEP_FAST_THRESHOLD_MS = 6000; // switch to fast cadence when remaining is below this
+#ifdef APP_DEBUG
+constexpr uint32_t DETONATED_EFFECT_DURATION_MS = 500;
+constexpr uint32_t DEFUSED_EFFECT_DURATION_MS = 500;
+#else
 constexpr uint32_t DETONATED_EFFECT_DURATION_MS = 10000;
 constexpr uint32_t DEFUSED_EFFECT_DURATION_MS = 5000;
+#endif
