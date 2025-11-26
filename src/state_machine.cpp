@@ -243,6 +243,7 @@ void updateState() {
         armingHoldComplete = true;
         irWindowActive = true;
         irWindowStartMs = now;
+        effects::onIrConfirmationPrompt();
         ui::showArmingConfirmPrompt();
       }
 
@@ -256,6 +257,7 @@ void updateState() {
         }
 
         if (now - irWindowStartMs >= IR_CONFIRM_WINDOW_MS) {
+          effects::onWrongCode();
           resetArmingFlow();
           stopButtonHold();
           setState(ACTIVE);
