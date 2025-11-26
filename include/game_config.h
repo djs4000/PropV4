@@ -5,7 +5,7 @@
 // Default gameplay configuration. Values are applied on first boot and can be
 // overridden by persisted Preferences values. These defaults follow agents.md.
 #ifdef APP_DEBUG
-constexpr uint32_t API_POST_INTERVAL_MS = 5000;      // 5s for testing
+constexpr uint32_t API_POST_INTERVAL_MS = 500;      // 5s for testing
 #else
 constexpr uint32_t API_POST_INTERVAL_MS = 500;      // 500ms for live
 #endif
@@ -44,8 +44,7 @@ inline ApiMode getApiMode() { return ApiMode::FullOnline; }
 // before the matrix.
 constexpr uint8_t LED_MATRIX_ROWS = 9;    // height
 constexpr uint8_t LED_MATRIX_COLS = 8;    // circumference columns
-constexpr uint16_t LED_START_OFFSET = 0;  // number of LEDs before the matrix
-constexpr uint16_t LED_COUNT = LED_MATRIX_ROWS * LED_MATRIX_COLS + LED_START_OFFSET;
+constexpr uint16_t LED_COUNT = LED_MATRIX_ROWS * LED_MATRIX_COLS;
 
 struct RgbColor {
   uint8_t r;
@@ -66,8 +65,8 @@ constexpr RgbColor COLOR_BOOT = {255, 200, 40};        // bright yellow for boot
 // Timing controls for LED/audio effects.
 constexpr uint32_t EFFECTS_FRAME_INTERVAL_MS = 30;       // base frame cadence
 constexpr uint32_t COUNTDOWN_BEEP_INTERVAL_MS = 1000;      // 1s beeps (slow cadence)
-constexpr uint32_t COUNTDOWN_BEEP_START_THRESHOLD_MS = 10000; // begin slow beeps when remaining is under this
+constexpr uint32_t COUNTDOWN_BEEP_START_THRESHOLD_MS = 11000; // begin slow beeps when remaining is under this
 constexpr uint32_t COUNTDOWN_BEEP_FAST_INTERVAL_MS = 500;  // faster cadence near zero
-constexpr uint32_t COUNTDOWN_BEEP_FAST_THRESHOLD_MS = 5000; // switch to fast cadence when remaining is below this
+constexpr uint32_t COUNTDOWN_BEEP_FAST_THRESHOLD_MS = 6000; // switch to fast cadence when remaining is below this
 constexpr uint32_t DETONATED_EFFECT_DURATION_MS = 10000;
 constexpr uint32_t DEFUSED_EFFECT_DURATION_MS = 5000;
