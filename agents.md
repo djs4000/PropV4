@@ -293,6 +293,7 @@ ERROR_STATE:
 - Add timer logic (armed countdown and internal match timer fallback during disconnection).
 - Complete ARMED countdown wiring and UI progress updates once real timers are available.
 - Expand web UI with debug options (state changes, triggering lights and sounds).
+- Integrate a real timestamp/telemetry source for API payloads instead of placeholder values.
 
 ---
 
@@ -314,8 +315,8 @@ ERROR_STATE:
   - When buffer is full:
     - If it matches the configured defuse code → trigger transition to `DEFUSED`.
     - If it does not match:
-      - Play short error tone.
-      - Clear buffer and allow immediate retry (no lockout by default).
+      - Play short error tone and lock out keypad entry for the tone's duration.
+      - Clear buffer and allow retry once the tone finishes.
 
 ### **Buttons**
 
@@ -326,7 +327,7 @@ ERROR_STATE:
 ### **IR Confirmation (ARMING)**
 
 - Use Arduino-IRremote v4.5.0 on pin 27.
-- After both buttons are held for `BUTTON_HOLD_MS`, open a configurable confirmation window that listens for any IR blast.
+- After both buttons are held for `BUTTON_HOLD_MS`, open a configurable confirmation window (default 5000 ms) that listens for any IR blast.
 - Show "Confirm activation" in the UI during this window.
 - If an IR code is received within the window → advance to `ARMED`.
 - If the window expires without an IR code → revert to `ACTIVE`.
@@ -393,7 +394,7 @@ These should be defined (with defaults) in `game_config.h` and/or a central conf
 constexpr uint32_t API_POST_INTERVAL_MS    = 500;   // release default; debug builds use 5000 ms while cadence is finalized
 constexpr uint32_t API_TIMEOUT_MS          = 10000; // 10s
 constexpr uint32_t BUTTON_HOLD_MS          = 3000;  // 3s for arming/reset
-constexpr uint32_t IR_CONFIRM_WINDOW_MS    = 2000;  // 2s IR confirmation window (example)
+constexpr uint32_t IR_CONFIRM_WINDOW_MS    = 5000;  // default 5s IR confirmation window; should be configurable
 constexpr uint8_t  DEFUSE_CODE_LENGTH      = 4;     // digits
 constexpr uint8_t  MAX_WIFI_RETRIES        = 10;    // attempts
 
