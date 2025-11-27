@@ -33,6 +33,10 @@ struct GameInputs {
   bool apiResponseReceived = false;
   MatchStatus remoteMatchStatus = WaitingOnStart;
   uint32_t configuredBombDurationMs = DEFAULT_BOMB_DURATION_MS;
+  String configuredDefuseCode;
+  bool bothButtonsPressed = false;
+  bool keypadDigitAvailable = false;
+  char keypadDigit = '\0';
   bool irConfirmationReceived = false;
 };
 
@@ -45,9 +49,9 @@ struct GameOutputs {
   bool armingConfirmNeededEffect = false;
   bool armingConfirmedEffect = false;
   bool wrongCodeEffect = false;
+  bool keypadDigitEffect = false;
 
   bool clearIrConfirmation = false;
-  bool clearDefuseBuffer = false;
 
   bool gameOverSet = false;
   bool gameOver = false;
@@ -72,11 +76,14 @@ bool is_bomb_timer_active();
 uint32_t get_bomb_timer_remaining_ms();
 uint32_t get_bomb_timer_duration_ms();
 
-void start_button_hold(uint32_t nowMs);
-void stop_button_hold();
 bool is_button_hold_active();
 uint32_t get_button_hold_start_ms();
 bool is_ir_confirmation_window_active();
+
+uint8_t get_defuse_entered_digits();
+const char *get_defuse_buffer();
+
+float get_arming_progress(uint32_t nowMs);
 
 const char *flame_state_to_string(FlameState state);
 const char *match_status_to_string(MatchStatus status);

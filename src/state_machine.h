@@ -3,11 +3,12 @@
 #include <Arduino.h>
 
 #include "core/game_state.h"
+#include "inputs.h"
 
 // Accessors and update routine
 FlameState getState();
 void setState(FlameState newState);
-void updateState();
+void updateState(const InputSnapshot &inputSnapshot, GameOutputs &outputs);
 
 // Match status helpers (populated by the networking layer)
 void setMatchStatus(MatchStatus status);
@@ -23,12 +24,14 @@ bool isBombTimerActive();
 uint32_t getBombTimerRemainingMs();
 uint32_t getBombTimerDurationMs();
 
-// Button hold helpers (driven by inputs module)
-void startButtonHold(uint32_t nowMs);
-void stopButtonHold();
+// Button hold helpers (state managed internally)
 bool isButtonHoldActive();
 uint32_t getButtonHoldStartMs();
 bool isIrConfirmationWindowActive();
+
+uint8_t getDefuseEnteredDigits();
+const char *getDefuseBuffer();
+float getArmingProgress(uint32_t nowMs);
 
 // Utility conversion helpers
 const char *flameStateToString(FlameState state);

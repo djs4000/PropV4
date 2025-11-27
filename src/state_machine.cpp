@@ -5,37 +5,28 @@
 #include "game_config.h"
 #include "inputs.h"
 #include "network.h"
-#include "ui.h"
 #include "util.h"
 
 namespace {
-GameInputs buildGameInputs() {
+GameInputs buildGameInputs(const InputSnapshot &inputSnapshot) {
   GameInputs inputs{};
-  inputs.nowMs = millis();
+  inputs.nowMs = inputSnapshot.nowMs;
   inputs.wifiConnected = network::isWifiConnected();
   inputs.lastSuccessfulApiMs = network::getLastSuccessfulApiMs();
   inputs.apiResponseReceived = network::hasReceivedApiResponse();
   inputs.remoteMatchStatus = network::getRemoteMatchStatus();
   inputs.configuredBombDurationMs = network::getConfiguredBombDurationMs();
-  inputs.irConfirmationReceived = consumeIrConfirmation();
+  inputs.configuredDefuseCode = network::getConfiguredDefuseCode();
+  inputs.bothButtonsPressed = inputSnapshot.bothButtonsPressed;
+  inputs.keypadDigitAvailable = inputSnapshot.keypadDigitAvailable;
+  inputs.keypadDigit = inputSnapshot.keypadDigit;
+  inputs.irConfirmationReceived = inputSnapshot.irConfirmationReceived;
   return inputs;
 }
 
 void applyOutputs(const GameOutputs &outputs) {
-  if (outputs.gameOverSet) {
-    ui::setGameOver(outputs.gameOver);
-  }
-
   if (outputs.clearIrConfirmation) {
     clearIrConfirmation();
-  }
-
-  if (outputs.clearDefuseBuffer) {
-    clearDefuseBuffer();
-  }
-
-  if (outputs.showArmingConfirmPrompt) {
-    ui::showArmingConfirmPrompt();
   }
 
   if (outputs.armingConfirmNeededEffect) {
@@ -44,6 +35,10 @@ void applyOutputs(const GameOutputs &outputs) {
 
   if (outputs.armingConfirmedEffect) {
     effects::onArmingConfirmed();
+  }
+
+  if (outputs.keypadDigitEffect) {
+    effects::onKeypadKey();
   }
 
   if (outputs.wrongCodeEffect) {
@@ -70,9 +65,8 @@ void setState(FlameState newState) {
   applyOutputs(outputs);
 }
 
-void updateState() {
-  GameInputs inputs = buildGameInputs();
-  GameOutputs outputs{};
+void updateState(const InputSnapshot &inputSnapshot, GameOutputs &outputs) {
+  GameInputs inputs = buildGameInputs(inputSnapshot);
   game_state::game_tick(inputs, outputs);
   applyOutputs(outputs);
 }
@@ -95,15 +89,17 @@ uint32_t getBombTimerRemainingMs() { return game_state::get_bomb_timer_remaining
 
 uint32_t getBombTimerDurationMs() { return game_state::get_bomb_timer_duration_ms(); }
 
-void startButtonHold(uint32_t nowMs) { game_state::start_button_hold(nowMs); }
-
-void stopButtonHold() { game_state::stop_button_hold(); }
-
 bool isButtonHoldActive() { return game_state::is_button_hold_active(); }
 
 uint32_t getButtonHoldStartMs() { return game_state::get_button_hold_start_ms(); }
 
 bool isIrConfirmationWindowActive() { return game_state::is_ir_confirmation_window_active(); }
+
+uint8_t getDefuseEnteredDigits() { return game_state::get_defuse_entered_digits(); }
+
+const char *getDefuseBuffer() { return game_state::get_defuse_buffer(); }
+
+float getArmingProgress(uint32_t nowMs) { return game_state::get_arming_progress(nowMs); }
 
 const char *flameStateToString(FlameState state) { return game_state::flame_state_to_string(state); }
 

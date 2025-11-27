@@ -7,10 +7,7 @@
 #include <Wire.h>
 #include <cstring>
 
-#include "effects.h"
 #include "game_config.h"
-#include "network.h"
-#include "state_machine.h"
 
 namespace {
 constexpr uint8_t KEYPAD_ADDR = 0x20;   // PCF8574 for 4x4 keypad
@@ -28,11 +25,6 @@ constexpr char KEY_MAP[4][4] = {{'1', '2', '3', 'A'},
                                 {'7', '8', '9', 'C'},
                                 {'*', '0', '#', 'D'}};
 
-char defuseBuffer[DEFUSE_CODE_LENGTH + 1] = {0};
-uint8_t enteredDigits = 0;
-FlameState lastState = ON;
-uint32_t keypadLockedUntilMs = 0;
-
 bool lastButtonsRaw = false;
 bool debouncedButtons = false;
 uint32_t buttonsChangeMs = 0;
@@ -40,6 +32,8 @@ uint32_t buttonsChangeMs = 0;
 char lastKeyRaw = '\0';
 char debouncedKey = '\0';
 uint32_t keyChangeMs = 0;
+
+InputSnapshot lastSnapshot{};
 
 bool writePcf(uint8_t addr, uint8_t value) {
   Wire.beginTransmission(addr);
@@ -53,11 +47,6 @@ bool readPcf(uint8_t addr, uint8_t &value) {
   }
   value = Wire.read();
   return true;
-}
-
-void resetDefuseBuffer() {
-  memset(defuseBuffer, 0, sizeof(defuseBuffer));
-  enteredDigits = 0;
 }
 
 bool areBothButtonsPressedRaw() {
@@ -100,36 +89,6 @@ char scanKeypadRaw() {
   return '\0';
 }
 
-void handleDigitPress(char digit) {
-  const FlameState state = getState();
-  if (state != ARMED) {
-    resetDefuseBuffer();
-    return;
-  }
-
-  bool digitAdded = false;
-  if (enteredDigits < DEFUSE_CODE_LENGTH) {
-    // Provide immediate feedback on accepted numeric keypresses while armed.
-    effects::onKeypadKey();
-    defuseBuffer[enteredDigits++] = digit;
-    defuseBuffer[enteredDigits] = '\0';
-    digitAdded = true;
-  }
-
-  if (digitAdded && enteredDigits >= DEFUSE_CODE_LENGTH) {
-    const String &configured = network::getConfiguredDefuseCode();
-    const bool matches = configured.length() == DEFUSE_CODE_LENGTH && configured.equals(defuseBuffer);
-
-    if (matches) {
-      setState(DEFUSED);
-    } else {
-      effects::onWrongCode();
-      keypadLockedUntilMs = millis() + effects::getWrongCodeBeepDurationMs();
-    }
-
-    resetDefuseBuffer();
-  }
-}
 }  // namespace
 
 static bool irConfirmationPending = false;
@@ -137,12 +96,9 @@ static bool irConfirmationPending = false;
 void initIr() { IrReceiver.begin(27, ENABLE_LED_FEEDBACK); }
 
 void updateIr() {
-  // Only treat a decode as a valid confirmation when the arming confirmation
-  // window is active to avoid stale/unrelated IR noise auto-confirming arming
-  // on plug-in.
   if (IrReceiver.decode()) {
     const bool validPayload = IrReceiver.decodedIRData.protocol != UNKNOWN && IrReceiver.decodedIRData.numberOfBits > 0;
-    if (validPayload && getState() == ARMING && isIrConfirmationWindowActive()) {
+    if (validPayload) {
       irConfirmationPending = true;
     }
     IrReceiver.resume();
@@ -167,19 +123,12 @@ void initInputs() {
   writePcf(BUTTON_ADDR, 0xFF);
 
   initIr();
-  resetDefuseBuffer();
 }
 
-void updateInputs() {
+InputSnapshot updateInputs() {
   const uint32_t now = millis();
-  const FlameState state = getState();
 
   updateIr();
-
-  if (state != lastState) {
-    resetDefuseBuffer();
-    lastState = state;
-  }
 
   // Debounce both-button hold detection for ARMING/ERROR reset.
   const bool rawButtonsPressed = areBothButtonsPressedRaw();
@@ -193,48 +142,42 @@ void updateInputs() {
 #ifdef APP_DEBUG
     Serial.println(debouncedButtons ? "BUTTONS: both pressed" : "BUTTONS: released");
 #endif
-    if (debouncedButtons) {
-      startButtonHold(now);
-    } else {
-      const bool holdCompleted = getButtonHoldStartMs() != 0 && (now - getButtonHoldStartMs() >= BUTTON_HOLD_MS);
-      if (getState() == ARMING && holdCompleted) {
-        // Allow buttons to be released during the IR confirmation window.
-      } else {
-        stopButtonHold();
-      }
-    }
   }
 
-  // Debounce keypad entries to build the defuse code buffer, unless locked
-  // while error tones play.
-  if (now < keypadLockedUntilMs) {
-    lastKeyRaw = '\0';
-    debouncedKey = '\0';
-    writePcf(KEYPAD_ADDR, 0xFF);
-  } else {
-    const char rawKey = scanKeypadRaw();
-    if (rawKey != lastKeyRaw) {
-      keyChangeMs = now;
-      lastKeyRaw = rawKey;
-    }
+  // Debounce keypad entries and surface raw numeric digits without altering
+  // game state.
+  const char rawKey = scanKeypadRaw();
+  if (rawKey != lastKeyRaw) {
+    keyChangeMs = now;
+    lastKeyRaw = rawKey;
+  }
 
-    if (now - keyChangeMs >= KEY_DEBOUNCE_MS && debouncedKey != rawKey) {
-      debouncedKey = rawKey;
+  if (now - keyChangeMs >= KEY_DEBOUNCE_MS && debouncedKey != rawKey) {
+    debouncedKey = rawKey;
 #ifdef APP_DEBUG
-      if (debouncedKey != '\0') {
-        Serial.print("KEYPAD: ");
-        Serial.println(debouncedKey);
-      }
+    if (debouncedKey != '\0') {
+      Serial.print("KEYPAD: ");
+      Serial.println(debouncedKey);
+    }
 #endif
-      if (debouncedKey >= '0' && debouncedKey <= '9') {
-        handleDigitPress(debouncedKey);
-      }
     }
   }
+
+  lastSnapshot.nowMs = now;
+  lastSnapshot.bothButtonsPressed = debouncedButtons;
+  lastSnapshot.irConfirmationReceived = irConfirmationPending;
+  lastSnapshot.keypadDigitAvailable = (debouncedKey >= '0' && debouncedKey <= '9');
+  lastSnapshot.keypadDigit = lastSnapshot.keypadDigitAvailable ? debouncedKey : '\0';
+
+  if (lastSnapshot.irConfirmationReceived) {
+    irConfirmationPending = false;
+  }
+  if (lastSnapshot.keypadDigitAvailable) {
+    debouncedKey = '\0';
+    lastKeyRaw = '\0';
+  }
+
+  return lastSnapshot;
 }
 
-uint8_t getEnteredDigits() { return enteredDigits; }
-
-const char *getDefuseBuffer() { return defuseBuffer; }
-
-void clearDefuseBuffer() { resetDefuseBuffer(); }
+InputSnapshot getLastInputSnapshot() { return lastSnapshot; }
