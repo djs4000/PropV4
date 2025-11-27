@@ -402,7 +402,7 @@ void updateApi() {
       lastApiResponseMs = responseNow;
       apiResponseReceived = true;
 
-      updateGameTimerFromApi(remainingMs);
+      updateGameTimerFromApi(remainingMs, millis());
 
       if (statusParsed) {
         remoteStatus = parsedStatus;
