@@ -23,6 +23,12 @@ static bool configScreenRendered = false;
 
 static InputSnapshot lastInputs = {};
 
+static void renderBootScreenIfNeeded();
+static void renderMainUiIfNeeded(FlameState state);
+#ifdef APP_DEBUG
+static void handleDebugSerialStateChange();
+#endif
+
 static void taskInputs(uint32_t now) { updateInputs(lastInputs); }
 
 static void taskWifi(uint32_t now) { network::updateWifi(); }
