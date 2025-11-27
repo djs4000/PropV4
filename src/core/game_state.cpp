@@ -1,5 +1,9 @@
 #include "core/game_state.h"
 
+#include <cstring>
+
+#include "effects.h"
+
 namespace game_state {
 namespace {
 FlameState currentState = ON;
@@ -21,6 +25,10 @@ uint32_t irWindowStartMs = 0;
 bool irWindowActive = false;
 bool pendingClearIrConfirmation = false;
 
+char defuseBuffer[DEFUSE_CODE_LENGTH + 1] = {0};
+uint8_t defuseEnteredDigits = 0;
+uint32_t keypadLockedUntilMs = 0;
+
 uint32_t configuredBombDurationMs = DEFAULT_BOMB_DURATION_MS;
 
 bool isGameOverStatus(MatchStatus status) {
@@ -32,14 +40,42 @@ bool isGameTimerCountdownAllowed() {
 }
 
 bool isGlobalTimeoutTriggered(const GameInputs &inputs) {
-  return inputs.wifiConnected && (inputs.nowMs - inputs.lastSuccessfulApiMs >= API_TIMEOUT_MS);
+  if (!inputs.wifiConnected) {
+    return false;
+  }
+
+  if (inputs.nowMs < inputs.lastSuccessfulApiMs) {
+    return false;
+  }
+
+  return (inputs.nowMs - inputs.lastSuccessfulApiMs) >= API_TIMEOUT_MS;
 }
+
+#ifdef APP_DEBUG
+void logErrorTransition(const char *reason, const GameInputs &inputs) {
+  Serial.print("[ERROR] Entering ERROR_STATE due to: ");
+  Serial.println(reason);
+  Serial.printf("    wifiConnected=%s\n", inputs.wifiConnected ? "true" : "false");
+  const uint64_t apiDelta =
+      inputs.nowMs >= inputs.lastSuccessfulApiMs ? inputs.nowMs - inputs.lastSuccessfulApiMs : 0;
+  Serial.printf("    lastSuccessfulApiMs=%llu nowMs=%lu delta=%llu timeout=%lu\n",
+                static_cast<unsigned long long>(inputs.lastSuccessfulApiMs),
+                static_cast<unsigned long>(inputs.nowMs),
+                static_cast<unsigned long long>(apiDelta), static_cast<unsigned long>(API_TIMEOUT_MS));
+  Serial.println("    Check API availability, WiFi stability, or disable API watchdog while offline.");
+}
+#endif
 
 void resetArmingFlow(GameOutputs &outputs) {
   armingHoldComplete = false;
   irWindowActive = false;
   irWindowStartMs = 0;
   outputs.clearIrConfirmation = true;
+}
+
+void resetDefuseBuffer() {
+  std::memset(defuseBuffer, 0, sizeof(defuseBuffer));
+  defuseEnteredDigits = 0;
 }
 
 void stopButtonHoldInternal(GameOutputs &outputs) {
@@ -98,6 +134,8 @@ void transitionTo(FlameState newState, GameOutputs &outputs, uint32_t nowMs) {
     if (newState != DEFUSED) {
       bombTimerRemainingMs = 0;
     }
+    resetDefuseBuffer();
+    keypadLockedUntilMs = 0;
   }
 }
 
@@ -135,6 +173,20 @@ void updateTimers(uint32_t nowMs, GameOutputs &outputs) {
   updateBombTimerCountdown(nowMs, outputs);
 }
 
+void handleButtonHold(const GameInputs &inputs, GameOutputs &outputs) {
+  if (inputs.bothButtonsPressed && !armingHoldActive) {
+    armingHoldActive = true;
+    armingHoldStartMs = inputs.nowMs;
+  }
+
+  if (!inputs.bothButtonsPressed && armingHoldActive) {
+    const bool holdCompleted = inputs.nowMs - armingHoldStartMs >= BUTTON_HOLD_MS;
+    if (!(currentState == ARMING && holdCompleted && irWindowActive)) {
+      stopButtonHoldInternal(outputs);
+    }
+  }
+}
+
 void handleArmingFlow(uint32_t nowMs, bool irConfirmationReceived, GameOutputs &outputs) {
   if (!armingHoldActive) {
     resetArmingFlow(outputs);
@@ -166,12 +218,46 @@ void handleArmingFlow(uint32_t nowMs, bool irConfirmationReceived, GameOutputs &
     transitionTo(ACTIVE, outputs, nowMs);
   }
 }
+
+void handleDefuseInput(const GameInputs &inputs, GameOutputs &outputs) {
+  if (currentState != ARMED) {
+    resetDefuseBuffer();
+    return;
+  }
+
+  if (inputs.nowMs < keypadLockedUntilMs) {
+    return;
+  }
+
+  if (!inputs.keypadDigitAvailable || inputs.keypadDigit < '0' || inputs.keypadDigit > '9') {
+    return;
+  }
+
+  if (defuseEnteredDigits < DEFUSE_CODE_LENGTH) {
+    defuseBuffer[defuseEnteredDigits++] = inputs.keypadDigit;
+    defuseBuffer[defuseEnteredDigits] = '\0';
+    outputs.keypadDigitEffect = true;
+  }
+
+  if (defuseEnteredDigits >= DEFUSE_CODE_LENGTH) {
+    const bool matches = inputs.configuredDefuseCode.length() == DEFUSE_CODE_LENGTH &&
+                        inputs.configuredDefuseCode.equals(defuseBuffer);
+    if (matches) {
+      transitionTo(DEFUSED, outputs, inputs.nowMs);
+    } else {
+      outputs.wrongCodeEffect = true;
+      keypadLockedUntilMs = inputs.nowMs + effects::getWrongCodeBeepDurationMs();
+    }
+    resetDefuseBuffer();
+  }
+}
 }  // namespace
 
 void game_init() { currentState = ON; }
 
 void game_tick(const GameInputs &inputs, GameOutputs &outputs) {
   configuredBombDurationMs = inputs.configuredBombDurationMs;
+  handleButtonHold(inputs, outputs);
 
   if (pendingClearIrConfirmation) {
     outputs.clearIrConfirmation = true;
@@ -179,6 +265,9 @@ void game_tick(const GameInputs &inputs, GameOutputs &outputs) {
   }
 
   if (currentState != ERROR_STATE && isGlobalTimeoutTriggered(inputs)) {
+#ifdef APP_DEBUG
+    logErrorTransition("API timeout watchdog", inputs);
+#endif
     transitionTo(ERROR_STATE, outputs, inputs.nowMs);
     return;
   }
@@ -207,10 +296,15 @@ void game_tick(const GameInputs &inputs, GameOutputs &outputs) {
 
   if (currentMatchStatus == WaitingOnStart) {
     resetArmingFlow(outputs);
-    outputs.clearDefuseBuffer = true;
+    resetDefuseBuffer();
   }
 
   updateTimers(inputs.nowMs, outputs);
+  if (outputs.stateChanged) {
+    return;
+  }
+
+  handleDefuseInput(inputs, outputs);
   if (outputs.stateChanged) {
     return;
   }
@@ -311,28 +405,24 @@ uint32_t get_bomb_timer_remaining_ms() { return bombTimerRemainingMs; }
 
 uint32_t get_bomb_timer_duration_ms() { return bombTimerDurationMs; }
 
-void start_button_hold(uint32_t nowMs) {
-  if (armingHoldActive) {
-    return;
-  }
-  armingHoldActive = true;
-  armingHoldStartMs = nowMs;
-}
-
-void stop_button_hold() {
-  armingHoldActive = false;
-  armingHoldStartMs = 0;
-  armingHoldComplete = false;
-  irWindowActive = false;
-  irWindowStartMs = 0;
-  pendingClearIrConfirmation = true;
-}
-
 bool is_button_hold_active() { return armingHoldActive; }
 
 uint32_t get_button_hold_start_ms() { return armingHoldStartMs; }
 
 bool is_ir_confirmation_window_active() { return irWindowActive; }
+
+uint8_t get_defuse_entered_digits() { return defuseEnteredDigits; }
+
+const char *get_defuse_buffer() { return defuseBuffer; }
+
+float get_arming_progress(uint32_t nowMs) {
+  if (!armingHoldActive || armingHoldStartMs == 0) {
+    return 0.0f;
+  }
+  const uint32_t elapsed = nowMs - armingHoldStartMs;
+  const float progress = static_cast<float>(elapsed) / static_cast<float>(BUTTON_HOLD_MS);
+  return progress > 1.0f ? 1.0f : progress;
+}
 
 const char *flame_state_to_string(FlameState state) {
   switch (state) {
