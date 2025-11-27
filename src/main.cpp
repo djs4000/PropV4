@@ -35,8 +35,6 @@ static UiModel buildUiModel() {
     model.bombTimerActive = isBombTimerActive();
     model.timerRemainingMs = getBombTimerRemainingMs();
     model.bombTimerExpired = model.timerRemainingMs == 0;
-  } else if (isGameTimerValid()) {
-    model.timerRemainingMs = getGameTimerRemainingMs();
   }
 
   model.showBootScreen = (state == ON) && !network::isConfigPortalActive();

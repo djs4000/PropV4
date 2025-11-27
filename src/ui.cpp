@@ -70,6 +70,7 @@ struct MainCache {
   String debugMatchStatus;
   String debugIp;
   String debugTimer;
+  int32_t debugTimerSeconds = -1;
 #endif
 } mainCache;
 
@@ -125,6 +126,7 @@ void markAllLayoutsDirty() {
   mainCache.debugMatchStatus = "";
   mainCache.debugIp = "";
   mainCache.debugTimer = "";
+  mainCache.debugTimerSeconds = -1;
 #endif
 }
 
@@ -210,6 +212,17 @@ void formatTimeSSMM(uint32_t ms, char *buffer, size_t len) {
   snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(totalSeconds), static_cast<unsigned>(centiseconds));
 }
 
+void formatTimeMMSS(uint32_t ms, char *buffer, size_t len) {
+  if (len == 0 || buffer == nullptr) {
+    return;
+  }
+
+  const uint32_t totalSeconds = ms / 1000;
+  const uint32_t minutes = totalSeconds / 60;
+  const uint32_t seconds = totalSeconds % 60;
+  snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(minutes), static_cast<unsigned>(seconds));
+}
+
 void renderBootScreen(const UiModel &model) {
   drawBootLayout();
 
@@ -266,8 +279,6 @@ void renderConfigPortalScreen(const UiModel &model) {
 }
 
 void renderMainUi(const UiModel &model) {
-  drawStaticLayout();
-
   if (model.state == DETONATED) {
     if (!mainCache.detonatedDrawn) {
       tft.fillScreen(activeTheme.detonatedBackgroundColor);
@@ -290,6 +301,8 @@ void renderMainUi(const UiModel &model) {
     mainCache.timerText = "";
     mainCache.statusText = "";
   }
+
+  drawStaticLayout();
 
   char timerBuffer[8] = {0};
   formatTimeSSMM(model.timerRemainingMs, timerBuffer, sizeof(timerBuffer));
@@ -375,16 +388,18 @@ void renderMainUi(const UiModel &model) {
   const int16_t debugHeight = 22;
   const int16_t debugY = tft.height() - debugHeight;
   String debugTimerValue;
+  int32_t debugTimerSeconds = -1;
   if (model.debugTimerValid) {
     char debugTimerBuffer[8] = {0};
-    formatTimeSSMM(model.debugTimerRemainingMs, debugTimerBuffer, sizeof(debugTimerBuffer));
+    formatTimeMMSS(model.debugTimerRemainingMs, debugTimerBuffer, sizeof(debugTimerBuffer));
     debugTimerValue = String(debugTimerBuffer);
+    debugTimerSeconds = static_cast<int32_t>(model.debugTimerRemainingMs / 1000);
   } else {
     debugTimerValue = "--:--";
   }
 
   if (model.debugMatchStatus != mainCache.debugMatchStatus || model.debugIp != mainCache.debugIp ||
-      debugTimerValue != mainCache.debugTimer) {
+      debugTimerSeconds != mainCache.debugTimerSeconds) {
     tft.fillRect(0, debugY, tft.width(), debugHeight, activeTheme.backgroundColor);
     tft.setTextSize(1);
     tft.setTextColor(activeTheme.foregroundColor, activeTheme.backgroundColor);
@@ -397,6 +412,7 @@ void renderMainUi(const UiModel &model) {
     mainCache.debugMatchStatus = model.debugMatchStatus;
     mainCache.debugIp = model.debugIp;
     mainCache.debugTimer = debugTimerValue;
+    mainCache.debugTimerSeconds = debugTimerSeconds;
   }
 #endif
 }
