@@ -5,34 +5,68 @@
 #include "state_machine.h"
 
 namespace ui {
-// Draw the boot screen showing WiFi/API progress before entering READY.
-void renderBootScreen(const String &wifiSsid, bool wifiConnected, bool wifiFailed,
-                      const String &configApSsid, const String &configApAddress,
-                      const String &ipAddress, const String &apiEndpoint,
-                      bool hasApiResponse);
+struct UiThemeConfig {
+  uint16_t backgroundColor = TFT_BLACK;
+  uint16_t foregroundColor = TFT_WHITE;
+  uint16_t defusedColor = TFT_GREEN;
+  uint16_t detonatedBackground = TFT_RED;
+  uint16_t detonatedText = TFT_BLACK;
+  uint16_t armingYellow = TFT_YELLOW;
+  uint16_t armingRed = TFT_RED;
+};
 
-// Initialize the TFT and draw the static main screen layout (title, outlines, etc.).
-void initMainScreen();
+struct UiBootModel {
+  bool show = false;
+  String wifiSsid;
+  bool wifiConnected = false;
+  bool wifiFailed = false;
+  String configApSsid;
+  String configApAddress;
+  String ipAddress;
+  String apiEndpoint;
+  bool hasApiResponse = false;
+};
 
-// Render the primary game UI reflecting the provided state and progress values.
-void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs, float armingProgress01,
-                 uint8_t codeLength, uint8_t enteredDigits, const char *enteredCode);
+struct UiConfigPortalModel {
+  bool show = false;
+  String ssid;
+  String password;
+  String portalAddress;
+};
 
-// Helper to format a millisecond value into MM:SS (zero-padded) for on-screen display.
-void formatTimeMMSS(uint32_t ms, char *buffer, size_t len);
-// Helper to format a millisecond value into SS:MM (zero-padded) for bomb timer display.
-void formatTimeSSMM(uint32_t ms, char *buffer, size_t len);
+struct UiTimerModel {
+  uint32_t bombDurationMs = 0;
+  uint32_t bombRemainingMs = 0;
+  bool bombTimerActive = false;
+  bool gameTimerValid = false;
+  uint32_t gameTimerRemainingMs = 0;
+};
 
-// Placeholder UI lifecycle hooks for future expansion.
-void initUI();
-void updateUI();
+struct UiArmingModel {
+  float progress01 = 0.0f;
+  bool awaitingIrConfirm = false;
+};
 
-// Game over overlay flag driven by API statuses without introducing new states.
-void setGameOver(bool active);
+struct UiGameModel {
+  FlameState state = ON;
+  uint8_t codeLength = 0;
+  uint8_t enteredDigits = 0;
+  String defuseBuffer;
+  bool gameOverActive = false;
+  MatchStatus matchStatus = WaitingOnStart;
+  String ipAddress;
+};
 
-// Prompt displayed when IR confirmation is pending during arming.
-void showArmingConfirmPrompt();
+struct UiModel {
+  UiThemeConfig theme;
+  UiBootModel boot;
+  UiConfigPortalModel configPortal;
+  UiTimerModel timers;
+  UiArmingModel arming;
+  UiGameModel game;
+};
 
-// Display instructions when the device enters SoftAP configuration mode.
-void renderConfigPortalScreen(const String &ssid, const String &password);
+UiThemeConfig defaultUiTheme();
+void renderUi(const UiModel &model);
+void resetUiState();
 }  // namespace ui

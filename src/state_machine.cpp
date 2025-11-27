@@ -1,15 +1,17 @@
 #include "state_machine.h"
 
+#include <cstring>
+
 #include "effects.h"
 #include "game_config.h"
-#include "inputs.h"
 #include "network.h"
-#include "ui.h"
 #include "util.h"
 
 namespace {
 FlameState currentState = ON;
 MatchStatus currentMatchStatus = WaitingOnStart;
+
+GameInputs currentInputs;
 
 // Game timer derived from API with local backup countdown when responses pause.
 bool gameTimerValid = false;
@@ -35,12 +37,16 @@ bool isGlobalTimeoutTriggered() {
 bool armingHoldComplete = false;
 uint32_t irWindowStartMs = 0;
 bool irWindowActive = false;
+bool gameOverActive = false;
+
+char defuseBuffer[DEFUSE_CODE_LENGTH + 1] = {0};
+uint8_t enteredDigits = 0;
+uint32_t keypadLockedUntilMs = 0;
 
 void resetArmingFlow() {
   armingHoldComplete = false;
   irWindowActive = false;
   irWindowStartMs = 0;
-  clearIrConfirmation();
 }
 
 bool isGameOverStatus(MatchStatus status) {
@@ -49,6 +55,11 @@ bool isGameOverStatus(MatchStatus status) {
 
 bool isGameTimerCountdownAllowed() {
   return currentState == ACTIVE || currentState == ARMING || currentState == ARMED;
+}
+
+void resetDefuseBuffer() {
+  memset(defuseBuffer, 0, sizeof(defuseBuffer));
+  enteredDigits = 0;
 }
 
 void updateGameTimerCountdown() {
@@ -129,7 +140,14 @@ void setState(FlameState newState) {
 
   if (oldState == ARMING && newState != ARMING) {
     resetArmingFlow();
-    stopButtonHold();
+  }
+  if (oldState == ARMED && newState != ARMED) {
+    resetDefuseBuffer();
+    keypadLockedUntilMs = 0;
+  }
+  if (newState != ARMING && newState != ACTIVE) {
+    armingHoldActive = false;
+    armingHoldStartMs = 0;
   }
   // Timer lifecycle hooks based on state transitions.
   if (newState == ARMED && oldState != ARMED) {
@@ -151,6 +169,23 @@ void setState(FlameState newState) {
 }
 
 void updateState() {
+  const uint32_t now = millis();
+
+  // Debounce the arming hold tracking based on the latest inputs.
+  if (currentInputs.bothButtonsPressed) {
+    if (!armingHoldActive) {
+      armingHoldActive = true;
+      armingHoldStartMs = now;
+    }
+  } else if (armingHoldActive) {
+    const bool holdCompleted = armingHoldStartMs != 0 && (now - armingHoldStartMs >= BUTTON_HOLD_MS);
+    if (!(currentState == ARMING && holdCompleted)) {
+      armingHoldActive = false;
+      armingHoldStartMs = 0;
+      resetArmingFlow();
+    }
+  }
+
   // Apply global networking timeout rule first for all non-error states.
   if (currentState != ERROR_STATE && isGlobalTimeoutTriggered()) {
 #ifdef APP_DEBUG
@@ -168,7 +203,7 @@ void updateState() {
   }
 
   const bool gameOver = isGameOverStatus(currentMatchStatus) && currentState != DEFUSED && currentState != DETONATED;
-  ui::setGameOver(gameOver);
+  gameOverActive = gameOver;
   if (gameOver) {
     gameTimerValid = false;
     gameTimerRemainingMs = 0;
@@ -176,7 +211,6 @@ void updateState() {
     bombTimerActive = false;
     bombTimerRemainingMs = 0;
     resetArmingFlow();
-    stopButtonHold();
     if (currentState == ARMED || currentState == ARMING || currentState == ACTIVE) {
       setState(READY);
       return;
@@ -185,21 +219,18 @@ void updateState() {
 
   if (currentMatchStatus == WaitingOnStart) {
     resetArmingFlow();
-    stopButtonHold();
-    clearIrConfirmation();
-    clearDefuseBuffer();
+    resetDefuseBuffer();
   }
 
-  // Placeholder button handling: actual input module will call into the state
-  // machine to start/stop arming. For now we maintain stub timing logic to
-  // illustrate the non-blocking pattern without implementing hardware reads.
   const FlameState startingState = currentState;
   updateTimers();
   if (currentState != startingState) {
     return;  // A timer transition changed state; defer additional logic until next tick.
   }
 
-  const uint32_t now = millis();
+  if (currentState != ARMED && enteredDigits > 0) {
+    resetDefuseBuffer();
+  }
 
   switch (currentState) {
     case ON:
@@ -212,8 +243,6 @@ void updateState() {
       break;
 
     case ACTIVE:
-      // Both buttons pressed immediately transitions to ARMING; hold timer is
-      // tracked for the subsequent ARMING->ARMED promotion.
       if (armingHoldActive) {
         setState(ARMING);
       }
@@ -228,7 +257,6 @@ void updateState() {
       if (currentMatchStatus == WaitingOnStart || currentMatchStatus == Countdown ||
           currentMatchStatus == WaitingOnFinalData) {
         resetArmingFlow();
-        stopButtonHold();
         setState(READY);
         break;
       }
@@ -243,23 +271,20 @@ void updateState() {
         armingHoldComplete = true;
         irWindowActive = true;
         irWindowStartMs = now;
-        ui::showArmingConfirmPrompt();
         effects::onArmingConfirmNeeded();
       }
 
       if (irWindowActive) {
-        if (consumeIrConfirmation()) {
+        if (currentInputs.irConfirmationReceived) {
           effects::onArmingConfirmed();
           setState(ARMED);
           resetArmingFlow();
-          stopButtonHold();
           break;
         }
 
         if (now - irWindowStartMs >= IR_CONFIRM_WINDOW_MS) {
           effects::onWrongCode();
           resetArmingFlow();
-          stopButtonHold();
           setState(ACTIVE);
         }
       }
@@ -286,32 +311,63 @@ void updateState() {
     case ERROR_STATE:
       // Placeholder: reset to ON after BUTTON_HOLD_MS of both buttons pressed.
       if (armingHoldActive && (now - armingHoldStartMs >= BUTTON_HOLD_MS)) {
-        stopButtonHold();
+        armingHoldActive = false;
+        armingHoldStartMs = 0;
         setState(ON);
       }
       break;
   }
-}
 
-void startButtonHold() {
-  if (armingHoldActive) {
-    return;
+  if (currentState == ARMED) {
+    if (keypadLockedUntilMs > now) {
+      return;
+    }
+    if (currentInputs.hasKeypadDigit && currentInputs.keypadDigit >= '0' && currentInputs.keypadDigit <= '9') {
+      if (enteredDigits < DEFUSE_CODE_LENGTH) {
+        effects::onKeypadKey();
+        defuseBuffer[enteredDigits++] = currentInputs.keypadDigit;
+        defuseBuffer[enteredDigits] = '\0';
+      }
+
+      if (enteredDigits >= DEFUSE_CODE_LENGTH) {
+        const String &configured = network::getConfiguredDefuseCode();
+        const bool matches = configured.length() == DEFUSE_CODE_LENGTH && configured.equals(defuseBuffer);
+
+        if (matches) {
+          setState(DEFUSED);
+        } else {
+          effects::onWrongCode();
+          keypadLockedUntilMs = now + effects::getWrongCodeBeepDurationMs();
+        }
+
+        resetDefuseBuffer();
+      }
+    }
   }
-  armingHoldActive = true;
-  armingHoldStartMs = millis();
 }
 
-void stopButtonHold() {
-  armingHoldActive = false;
-  armingHoldStartMs = 0;
-  resetArmingFlow();
+void applyGameInputs(const GameInputs &inputs) { currentInputs = inputs; }
+
+GameOutputs getGameOutputs() {
+  GameOutputs outputs{};
+  outputs.state = currentState;
+  outputs.gameOverActive = gameOverActive;
+  outputs.bombTimerActive = bombTimerActive;
+  outputs.bombTimerDurationMs = bombTimerDurationMs;
+  outputs.bombTimerRemainingMs = bombTimerRemainingMs;
+  outputs.gameTimerValid = gameTimerValid;
+  outputs.gameTimerRemainingMs = gameTimerRemainingMs;
+  outputs.awaitingIrConfirmation = irWindowActive;
+  if (armingHoldActive && armingHoldStartMs != 0) {
+    const float progress = static_cast<float>(millis() - armingHoldStartMs) / static_cast<float>(BUTTON_HOLD_MS);
+    outputs.armingProgress01 = constrain(progress, 0.0f, 1.0f);
+  }
+  return outputs;
 }
 
-bool isButtonHoldActive() { return armingHoldActive; }
+uint8_t getEnteredDigits() { return enteredDigits; }
 
-uint32_t getButtonHoldStartMs() { return armingHoldStartMs; }
-
-bool isIrConfirmationWindowActive() { return irWindowActive; }
+const char *getDefuseBuffer() { return defuseBuffer; }
 
 void setMatchStatus(MatchStatus status) { currentMatchStatus = status; }
 

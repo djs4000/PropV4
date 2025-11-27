@@ -5,18 +5,17 @@
 #include <climits>
 #include <cmath>
 
-#include "network.h"
 #include "state_machine.h"
 
 namespace {
 constexpr uint8_t BACKLIGHT_PIN = 21;
-constexpr uint16_t BACKGROUND_COLOR = TFT_BLACK;
-constexpr uint16_t FOREGROUND_COLOR = TFT_WHITE;
-constexpr uint16_t DEFUSED_COLOR = TFT_GREEN;
-constexpr uint16_t DETONATED_BG_COLOR = TFT_RED;
-constexpr uint16_t DETONATED_TEXT_COLOR = TFT_BLACK;
-constexpr uint16_t ARMING_BAR_YELLOW = TFT_YELLOW;
-constexpr uint16_t ARMING_BAR_RED = TFT_RED;
+uint16_t BACKGROUND_COLOR = TFT_BLACK;
+uint16_t FOREGROUND_COLOR = TFT_WHITE;
+uint16_t DEFUSED_COLOR = TFT_GREEN;
+uint16_t DETONATED_BG_COLOR = TFT_RED;
+uint16_t DETONATED_TEXT_COLOR = TFT_BLACK;
+uint16_t ARMING_BAR_YELLOW = TFT_YELLOW;
+uint16_t ARMING_BAR_RED = TFT_RED;
 
 // Layout constants tuned for a 240x320 portrait canvas (rotation 0).
 constexpr uint8_t TITLE_TEXT_SIZE = 2;
@@ -46,6 +45,9 @@ TFT_eSPI tft = TFT_eSPI();
 bool screenInitialized = false;
 bool layoutDrawn = false;
 bool bootLayoutDrawn = false;
+UiThemeConfig activeTheme;
+enum class UiView { Boot, Config, Main };
+UiView currentView = UiView::Boot;
 
 // Cache of the last rendered dynamic values so we avoid unnecessary redraws.
 FlameState lastRenderedState = ON;
@@ -70,11 +72,69 @@ int16_t lastTimerSecondsWidth = 0;
 int16_t lastTimerCentisecondsWidth = 0;
 uint32_t lastTimerRedrawMs = 0;
 uint32_t lastShownCentiseconds = UINT32_MAX;
-bool gameOverActive = false;
+bool lastGameOverFlag = false;
+bool themeInitialized = false;
 
 String lastBootWifiLine;
 String lastBootStatusLine;
 String lastBootEndpointLine;
+
+bool themesEqual(const UiThemeConfig &a, const UiThemeConfig &b) {
+  return a.backgroundColor == b.backgroundColor && a.foregroundColor == b.foregroundColor &&
+         a.defusedColor == b.defusedColor && a.detonatedBackground == b.detonatedBackground &&
+         a.detonatedText == b.detonatedText && a.armingYellow == b.armingYellow &&
+         a.armingRed == b.armingRed;
+}
+
+void invalidateRenderCache() {
+  layoutDrawn = false;
+  bootLayoutDrawn = false;
+  renderCacheInvalidated = true;
+  lastRenderedState = ON;
+  lastTimerText = "";
+  lastStatusText = "";
+  lastBarFill = -1;
+  lastArmingBarUpdateMs = 0;
+  lastArmingProgress = -1.0f;
+  lastCodeLength = 0;
+  lastRenderedCode = "";
+  lastDebugTimerText = "";
+  lastDebugMatchText = "";
+  lastDebugIpText = "";
+  lastTimerColor = FOREGROUND_COLOR;
+  lastStatusColor = FOREGROUND_COLOR;
+  lastArmingColor = FOREGROUND_COLOR;
+  lastTimerSecondsText = "";
+  lastTimerCentisecondsText = "";
+  lastTimerStartX = -1;
+  lastTimerSecondsWidth = 0;
+  lastTimerCentisecondsWidth = 0;
+  lastTimerRedrawMs = 0;
+  lastShownCentiseconds = UINT32_MAX;
+  lastGameOverFlag = false;
+}
+
+void applyTheme(const UiThemeConfig &theme) {
+  if (!themeInitialized || !themesEqual(theme, activeTheme)) {
+    activeTheme = theme;
+    BACKGROUND_COLOR = theme.backgroundColor;
+    FOREGROUND_COLOR = theme.foregroundColor;
+    DEFUSED_COLOR = theme.defusedColor;
+    DETONATED_BG_COLOR = theme.detonatedBackground;
+    DETONATED_TEXT_COLOR = theme.detonatedText;
+    ARMING_BAR_YELLOW = theme.armingYellow;
+    ARMING_BAR_RED = theme.armingRed;
+    themeInitialized = true;
+    invalidateRenderCache();
+  }
+}
+
+void setView(UiView view) {
+  if (currentView != view) {
+    currentView = view;
+    invalidateRenderCache();
+  }
+}
 
 int16_t barX() { return (tft.width() - BAR_WIDTH) / 2; }
 
@@ -285,69 +345,78 @@ void formatTimeSSMM(uint32_t ms, char *buffer, size_t len) {
   snprintf(buffer, len, "%02u:%02u", static_cast<unsigned>(totalSeconds), static_cast<unsigned>(centiseconds));
 }
 
-void renderBootScreen(const String &wifiSsid, bool wifiConnected, bool wifiFailed,
-                      const String &configApSsid, const String &configApAddress,
-                      const String &ipAddress, const String &apiEndpoint,
-                      bool hasApiResponse) {
+UiThemeConfig defaultUiTheme() { return UiThemeConfig{}; }
+
+void renderBootView(const UiModel &model) {
   ensureDisplayReady();
   drawBootLayout();
 
   String wifiLine;
-  if (wifiFailed) {
-    const String apLabel = configApSsid.isEmpty() ? String("config AP") : configApSsid;
+  if (model.boot.wifiFailed) {
+    const String apLabel = model.boot.configApSsid.isEmpty() ? String("config AP") : model.boot.configApSsid;
     wifiLine = String("failed → AP ") + apLabel;
-  } else if (wifiConnected) {
-    wifiLine = String("connected (") + (ipAddress.isEmpty() ? "IP pending" : ipAddress) + ")";
+  } else if (model.boot.wifiConnected) {
+    wifiLine = String("connected (") + (model.boot.ipAddress.isEmpty() ? "IP pending" : model.boot.ipAddress) + ")";
   } else {
-    wifiLine = String("connecting to ") + wifiSsid;
+    wifiLine = String("connecting to ") + model.boot.wifiSsid;
   }
   const String apiStatusValue =
-      wifiFailed ? String("Open ") + (configApAddress.isEmpty() ? String("http://192.168.4.1") : configApAddress) +
-                       " to configure"
-                 : hasApiResponse ? "API response received" : "waiting for API response";
+      model.boot.wifiFailed ? String("Open ") + (model.boot.configApAddress.isEmpty() ? String("http://192.168.4.1")
+                                                                                       : model.boot.configApAddress) +
+                                   " to configure"
+                             : model.boot.hasApiResponse ? "API response received" : "waiting for API response";
 
   drawBootBlock("WiFi:", wifiLine, 60, STATUS_TEXT_SIZE, BOOT_DETAIL_TEXT_SIZE, lastBootWifiLine);
   drawBootBlock("Status:", apiStatusValue, 95, STATUS_TEXT_SIZE, BOOT_DETAIL_TEXT_SIZE, lastBootStatusLine);
-  drawBootBlock("Endpoint:", apiEndpoint, 150, STATUS_TEXT_SIZE, BOOT_DETAIL_TEXT_SIZE, lastBootEndpointLine);
+  drawBootBlock("Endpoint:", model.boot.apiEndpoint, 150, STATUS_TEXT_SIZE, BOOT_DETAIL_TEXT_SIZE,
+                lastBootEndpointLine);
 }
 
-void setGameOver(bool active) {
-  if (gameOverActive == active) {
+void renderConfigPortalView(const UiModel &model) {
+  ensureDisplayReady();
+
+  layoutDrawn = false;
+  bootLayoutDrawn = false;
+
+  static String lastRenderedSsid;
+  static String lastRenderedPassword;
+  static String lastRenderedAddress;
+
+  if (lastRenderedSsid == model.configPortal.ssid && lastRenderedPassword == model.configPortal.password &&
+      lastRenderedAddress == model.configPortal.portalAddress) {
     return;
   }
-  gameOverActive = active;
-  renderCacheInvalidated = true;
+
+  tft.fillScreen(BACKGROUND_COLOR);
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextSize(TITLE_TEXT_SIZE);
+  tft.drawString("Config Mode", 10, 10);
+
+  tft.setTextSize(STATUS_TEXT_SIZE);
+  tft.drawString("Connect to:", 10, 50);
+  tft.drawString(model.configPortal.ssid, 10, 70);
+
+  tft.drawString("Password:", 10, 100);
+  tft.drawString(model.configPortal.password, 10, 120);
+
+  tft.setTextSize(BOOT_DETAIL_TEXT_SIZE);
+  const String portalAddress = model.configPortal.portalAddress.isEmpty()
+                                   ? String("http://192.168.4.1")
+                                   : model.configPortal.portalAddress;
+  tft.drawString("Open " + portalAddress + " in a browser to update settings.", 10, 160);
+
+  lastRenderedSsid = model.configPortal.ssid;
+  lastRenderedPassword = model.configPortal.password;
+  lastRenderedAddress = portalAddress;
 }
 
-void initMainScreen() {
+void renderMainView(const UiModel &model) {
   ensureDisplayReady();
-  bootLayoutDrawn = false;  // Force boot overlay to redraw if revisited later.
-  layoutDrawn = false;  // Force redraw of static layout if called again.
-  drawStaticLayout();
-
-  // Prime dynamic regions to a clean state.
-  drawCenteredText("--:--", TIMER_Y, TIMER_TEXT_SIZE, 48);
-  drawStatusLine("Status:");
-
-  // Clear progress fill area.
-  tft.fillRect(barX() + BAR_BORDER, BAR_Y + BAR_BORDER, BAR_WIDTH - 2 * BAR_BORDER,
-               BAR_HEIGHT - 2 * BAR_BORDER, BACKGROUND_COLOR);
-
-  // Clear potential defuse code area.
-  tft.fillRect(0, CODE_Y - 16, tft.width(), 32, BACKGROUND_COLOR);
-
-  // Ensure the next render repaints all dynamic elements after the reset.
-  renderCacheInvalidated = true;
-}
-
-void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs, float armingProgress01,
-                 uint8_t codeLength, uint8_t enteredDigits, const char *enteredCode) {
-  ensureDisplayReady();
-
+  const FlameState state = model.game.state;
   const uint32_t now = millis();
 
   if (state == DETONATED) {
-    if (lastRenderedState != DETONATED) {
+    if (lastRenderedState != DETONATED || renderCacheInvalidated) {
       layoutDrawn = false;
       renderCacheInvalidated = true;
       tft.fillScreen(DETONATED_BG_COLOR);
@@ -365,10 +434,9 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     layoutDrawn = false;
     renderCacheInvalidated = true;
   }
+
   drawStaticLayout();
 
-  // If the layout was reinitialized (e.g., after leaving config mode), drop the
-  // caches so every dynamic element is redrawn on this pass.
   if (renderCacheInvalidated) {
     lastTimerText = "";
     lastStatusText = "";
@@ -394,20 +462,25 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     renderCacheInvalidated = false;
   }
 
-  // Timer
-  const bool bombTimerExpired = (state == DETONATED) && (getBombTimerRemainingMs() == 0);
-  const bool bombTimerHeld = (state == DEFUSED);
-  const bool bombTimerDisplay = ((state == ARMED) && isBombTimerActive()) || bombTimerExpired || bombTimerHeld;
-  uint32_t timerSource = 0;
-  uint16_t timerColor = (state == DEFUSED) ? DEFUSED_COLOR : FOREGROUND_COLOR;
+  if (model.arming.awaitingIrConfirm) {
+    drawCenteredText("Confirm activation", STATUS_Y, STATUS_TEXT_SIZE, 24);
+    lastRenderedState = state;
+    return;
+  }
 
+  uint32_t timerSource = model.timers.bombDurationMs;
+  uint16_t timerColor = (state == DEFUSED) ? DEFUSED_COLOR : FOREGROUND_COLOR;
+  const bool bombTimerExpired = (state == DETONATED) && (model.timers.bombRemainingMs == 0);
+  const bool bombTimerHeld = (state == DEFUSED);
+  const bool bombTimerDisplay = ((state == ARMED) && model.timers.bombTimerActive) || bombTimerExpired ||
+                                bombTimerHeld;
   if (bombTimerDisplay) {
-    timerSource = getBombTimerRemainingMs();
+    timerSource = model.timers.bombRemainingMs;
     if (state != DEFUSED && timerSource <= 10000) {
       timerColor = TFT_RED;
     }
-  } else {
-    timerSource = bombDurationMs;
+  } else if (model.timers.gameTimerValid) {
+    timerSource = model.timers.gameTimerRemainingMs;
   }
 
   const uint32_t currentCentiseconds = timerSource / 10;
@@ -429,26 +502,26 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     lastShownCentiseconds = currentCentiseconds;
   }
 
-  // Status line
   String statusText = "Status: ";
   statusText += flameStateToString(state);
-  if (gameOverActive) {
+  if (model.game.gameOverActive) {
     statusText += " (Game Over)";
   }
   uint16_t statusColor = (state == DEFUSED) ? DEFUSED_COLOR : FOREGROUND_COLOR;
-  if (gameOverActive) {
+  if (model.game.gameOverActive) {
     statusColor = DETONATED_BG_COLOR;
   }
-  if (statusText != lastStatusText || statusColor != lastStatusColor) {
+  if (statusText != lastStatusText || statusColor != lastStatusColor || model.game.gameOverActive != lastGameOverFlag) {
     drawStatusLine(statusText, statusColor);
     lastStatusText = statusText;
     lastStatusColor = statusColor;
+    lastGameOverFlag = model.game.gameOverActive;
   }
 
   const bool stateChanged = (state != lastRenderedState);
   const bool barActive = (state == ARMING) || (state == ARMED);
   const float clampedProgress =
-      (state == ARMING) ? constrain(armingProgress01, 0.0f, 1.0f) : ((state == ARMED) ? 1.0f : 0.0f);
+      (state == ARMING) ? constrain(model.arming.progress01, 0.0f, 1.0f) : ((state == ARMED) ? 1.0f : 0.0f);
   const int16_t innerWidth = BAR_WIDTH - 2 * BAR_BORDER;
   const int16_t desiredFill = barActive ? static_cast<int16_t>(innerWidth * clampedProgress) : 0;
   const int16_t quantizedFill =
@@ -493,45 +566,42 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     lastArmingColor = armingColor;
   }
 
-  // Defuse code placeholders are only shown when armed.
   if (state == ARMED) {
-    const String codeString = enteredCode ? String(enteredCode) : String("");
-    if (lastRenderedState != ARMED || lastCodeLength != codeLength || lastRenderedCode != codeString) {
+    const String codeString = model.game.defuseBuffer;
+    if (lastRenderedState != ARMED || lastCodeLength != model.game.codeLength || lastRenderedCode != codeString) {
       tft.fillRect(0, CODE_Y - 16, tft.width(), 32, BACKGROUND_COLOR);
 
       String codeDisplay;
-      codeDisplay.reserve(codeLength * 2);
-      for (uint8_t i = 0; i < codeLength; ++i) {
+      codeDisplay.reserve(model.game.codeLength * 2);
+      for (uint8_t i = 0; i < model.game.codeLength; ++i) {
         if (i < codeString.length()) {
           codeDisplay += codeString[i];
         } else {
           codeDisplay += "_";
         }
-        if (i < codeLength - 1) {
+        if (i < model.game.codeLength - 1) {
           codeDisplay += " ";
         }
       }
 
       drawCenteredText(codeDisplay, CODE_Y, CODE_TEXT_SIZE, 24);
-      lastCodeLength = codeLength;
+      lastCodeLength = model.game.codeLength;
       lastRenderedCode = codeString;
     }
   } else if (lastRenderedState == ARMED) {
-    // Clear placeholders when leaving ARMED.
     tft.fillRect(0, CODE_Y - 16, tft.width(), 32, BACKGROUND_COLOR);
     lastCodeLength = 0;
     lastRenderedCode = "";
   }
 
 #ifdef APP_DEBUG
-  // Two-line debug overlay along the bottom of the screen.
   const int16_t debugHeight = 22;
   const int16_t debugY = tft.height() - debugHeight;
-  const String ipOverlay = "IP: " + network::getWifiIpString();
-  const String matchOverlay = String("Match ") + matchStatusToString(network::getRemoteMatchStatus());
+  const String ipOverlay = "IP: " + model.game.ipAddress;
+  const String matchOverlay = String("Match ") + matchStatusToString(model.game.matchStatus);
   char gameTimerBuffer[8] = {0};
-  if (isGameTimerValid()) {
-    formatTimeMMSS(getGameTimerRemainingMs(), gameTimerBuffer, sizeof(gameTimerBuffer));
+  if (model.timers.gameTimerValid) {
+    formatTimeMMSS(model.timers.gameTimerRemainingMs, gameTimerBuffer, sizeof(gameTimerBuffer));
   } else {
     snprintf(gameTimerBuffer, sizeof(gameTimerBuffer), "--:--");
   }
@@ -541,11 +611,9 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
     tft.fillRect(0, debugY, tft.width(), debugHeight, BACKGROUND_COLOR);
     tft.setTextSize(1);
 
-    // Match status on the upper line.
     tft.setTextDatum(TL_DATUM);
     tft.drawString(matchOverlay, 2, debugY + 2);
 
-    // IP on the bottom-left, timer on the bottom-right.
     tft.setTextDatum(BL_DATUM);
     tft.drawString(ipOverlay, 2, tft.height() - 2);
     tft.setTextDatum(BR_DATUM);
@@ -560,54 +628,33 @@ void renderState(FlameState state, uint32_t bombDurationMs, uint32_t remainingMs
   lastRenderedState = state;
 }
 
-void renderConfigPortalScreen(const String &ssid, const String &password) {
-  ensureDisplayReady();
-
-  // Force the main UI to redraw after leaving config mode since we repaint the
-  // full canvas here.
-  layoutDrawn = false;
-  bootLayoutDrawn = false;
-
-  static String lastRenderedSsid;
-  static String lastRenderedPassword;
-
-  if (lastRenderedSsid == ssid && lastRenderedPassword == password) {
-    return;
+void renderUi(const UiModel &model) {
+  applyTheme(model.theme);
+  if (model.configPortal.show) {
+    setView(UiView::Config);
+  } else if (model.boot.show) {
+    setView(UiView::Boot);
+  } else {
+    setView(UiView::Main);
   }
 
-  tft.fillScreen(BACKGROUND_COLOR);
-  tft.setTextDatum(TL_DATUM);
-  tft.setTextSize(TITLE_TEXT_SIZE);
-  tft.drawString("Config Mode", 10, 10);
-
-  tft.setTextSize(STATUS_TEXT_SIZE);
-  tft.drawString("Connect to:", 10, 50);
-  tft.drawString(ssid, 10, 70);
-
-  tft.drawString("Password:", 10, 100);
-  tft.drawString(password, 10, 120);
-
-  tft.setTextSize(BOOT_DETAIL_TEXT_SIZE);
-  const String portalAddress = network::getConfigPortalAddress();
-  tft.drawString("Open " + (portalAddress.isEmpty() ? String("http://192.168.4.1") : portalAddress) +
-                     " in a browser to update settings.",
-                 10, 160);
-
-  lastRenderedSsid = ssid;
-  lastRenderedPassword = password;
+  switch (currentView) {
+    case UiView::Boot:
+      renderBootView(model);
+      break;
+    case UiView::Config:
+      renderConfigPortalView(model);
+      break;
+    case UiView::Main:
+      renderMainView(model);
+      break;
+  }
 }
 
-void showArmingConfirmPrompt() {
-  ensureDisplayReady();
-  drawStaticLayout();
-  drawCenteredText("Confirm activation", STATUS_Y, STATUS_TEXT_SIZE, 24);
+void resetUiState() {
+  screenInitialized = false;
+  invalidateRenderCache();
+  currentView = UiView::Boot;
 }
 
-void initUI() {
-  // Additional UI initialization (web/touch) will be added later.
-}
-
-void updateUI() {
-  // Non-blocking UI updates and touch handling will be implemented later.
-}
 }  // namespace ui

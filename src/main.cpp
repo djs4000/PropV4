@@ -20,99 +20,54 @@ static uint32_t lastWifiUpdateMs = 0;
 static uint32_t lastWebUiUpdateMs = 0;
 
 static uint32_t configuredBombDurationMs = DEFAULT_BOMB_DURATION_MS;
-static bool mainScreenInitialized = false;
-static FlameState lastRenderedState = ON;
-static uint32_t lastRenderedRemainingMs = 0;
-static uint32_t lastRenderedRemainingCs = 0;
-static float lastRenderedArmingProgress = -1.0f;
-static String lastRenderedDefuseBuffer;
-static bool configScreenRendered = false;
+static UiThemeConfig themeConfig = ui::defaultUiTheme();
 
-static void renderBootScreenIfNeeded() {
-  if (mainScreenInitialized) {
-    return;
-  }
-
-  const bool wifiFailed = network::isConfigPortalActive() || network::hasWifiFailedPermanently();
-  ui::renderBootScreen(network::getConfiguredWifiSsid(), network::isWifiConnected(), wifiFailed,
-                       network::getConfigPortalSsid(), network::getConfigPortalAddress(),
-                       network::getWifiIpString(), network::getConfiguredApiEndpoint(),
-                       network::hasReceivedApiResponse());
+static GameInputs mapSnapshotToInputs(const InputSnapshot &snapshot) {
+  GameInputs inputs{};
+  inputs.bothButtonsPressed = snapshot.bothButtonsPressed;
+  inputs.irConfirmationReceived = snapshot.irConfirmationReceived;
+  inputs.hasKeypadDigit = snapshot.hasKeypadDigit;
+  inputs.keypadDigit = snapshot.keypadDigit;
+  return inputs;
 }
 
-static void renderMainUiIfNeeded(FlameState state) {
-  const unsigned long now = millis();
+static UiModel buildUiModel(const GameOutputs &outputs) {
+  UiModel model{};
+  model.theme = themeConfig;
 
-  float armingProgress = 0.0f;
-  if (state == ARMING && isButtonHoldActive() && getButtonHoldStartMs() != 0) {
-    const uint32_t elapsed = now - getButtonHoldStartMs();
-    armingProgress = static_cast<float>(elapsed) / static_cast<float>(BUTTON_HOLD_MS);
-    armingProgress = constrain(armingProgress, 0.0f, 1.0f);
-  }
-  const bool awaitingIrConfirm = state == ARMING && isIrConfirmationWindowActive();
-  const String defuseBuffer = (state == ARMED) ? String(getDefuseBuffer()) : String("");
-  uint32_t remainingMs = configuredBombDurationMs;
-  if (state == ARMED && isBombTimerActive()) {
-    remainingMs = getBombTimerRemainingMs();
-  } else if (isGameTimerValid()) {
-    remainingMs = getGameTimerRemainingMs();
-  }
-  const uint32_t remainingSeconds = remainingMs / 1000;
-  const uint32_t lastRenderedSeconds = lastRenderedRemainingMs / 1000;
-  const uint32_t remainingCentiseconds = remainingMs / 10;
-  const uint32_t lastRenderedCentiseconds = lastRenderedRemainingCs;
+  model.boot.show = getState() == ON && !network::isConfigPortalActive() && !network::hasReceivedApiResponse();
+  model.boot.wifiSsid = network::getConfiguredWifiSsid();
+  model.boot.wifiConnected = network::isWifiConnected();
+  model.boot.wifiFailed = network::isConfigPortalActive() || network::hasWifiFailedPermanently();
+  model.boot.configApSsid = network::getConfigPortalSsid();
+  model.boot.configApAddress = network::getConfigPortalAddress();
+  model.boot.ipAddress = network::getWifiIpString();
+  model.boot.apiEndpoint = network::getConfiguredApiEndpoint();
+  model.boot.hasApiResponse = network::hasReceivedApiResponse();
 
-  bool shouldRender = false;
-  bool digitsChanged = false;
+  model.configPortal.show = network::isConfigPortalActive();
+  model.configPortal.ssid = network::getConfigPortalSsid();
+  model.configPortal.password = network::getConfigPortalPassword();
+  model.configPortal.portalAddress = network::getConfigPortalAddress();
 
-  if (state == ARMED) {
-    digitsChanged = defuseBuffer != lastRenderedDefuseBuffer;
-  } else if (!lastRenderedDefuseBuffer.isEmpty()) {
-    digitsChanged = true;
-  }
+  model.timers.bombDurationMs = configuredBombDurationMs;
+  model.timers.bombRemainingMs = outputs.bombTimerActive ? outputs.bombTimerRemainingMs : configuredBombDurationMs;
+  model.timers.bombTimerActive = outputs.bombTimerActive;
+  model.timers.gameTimerValid = outputs.gameTimerValid;
+  model.timers.gameTimerRemainingMs = outputs.gameTimerRemainingMs;
 
-  if (state == READY && !mainScreenInitialized) {
-    ui::initMainScreen();
-    mainScreenInitialized = true;
-    shouldRender = true;
-  }
+  model.arming.progress01 = outputs.armingProgress01;
+  model.arming.awaitingIrConfirm = outputs.awaitingIrConfirmation;
 
-  if (!mainScreenInitialized) {
-    return;
-  }
+  model.game.state = outputs.state;
+  model.game.codeLength = DEFUSE_CODE_LENGTH;
+  model.game.enteredDigits = getEnteredDigits();
+  model.game.defuseBuffer = String(getDefuseBuffer());
+  model.game.gameOverActive = outputs.gameOverActive;
+  model.game.matchStatus = getMatchStatus();
+  model.game.ipAddress = network::getWifiIpString();
 
-  effects::setArmingProgress(armingProgress);
-
-  if (awaitingIrConfirm) {
-    ui::showArmingConfirmPrompt();
-    lastRenderedState = state;
-    lastRenderedRemainingMs = remainingMs;
-    lastRenderedRemainingCs = remainingCentiseconds;
-    lastRenderedArmingProgress = armingProgress;
-    lastRenderedDefuseBuffer = (state == ARMED) ? defuseBuffer : String("");
-    return;
-  }
-
-  const bool centisecondChangedEnough = state == ARMED && isBombTimerActive() &&
-                                        (remainingCentiseconds > lastRenderedCentiseconds ?
-                                             (remainingCentiseconds - lastRenderedCentiseconds) >= 5 :
-                                             (lastRenderedCentiseconds - remainingCentiseconds) >= 5);
-
-  if (state != lastRenderedState || remainingSeconds != lastRenderedSeconds || centisecondChangedEnough ||
-      armingProgress != lastRenderedArmingProgress || digitsChanged) {
-    shouldRender = true;
-  }
-
-  if (shouldRender) {
-    const uint8_t enteredDigits = (state == ARMED) ? getEnteredDigits() : 0;
-    ui::renderState(state, configuredBombDurationMs, remainingMs, armingProgress, DEFUSE_CODE_LENGTH,
-                    enteredDigits, getDefuseBuffer());
-    lastRenderedState = state;
-    lastRenderedRemainingMs = remainingMs;
-    lastRenderedRemainingCs = remainingCentiseconds;
-    lastRenderedArmingProgress = armingProgress;
-    lastRenderedDefuseBuffer = (state == ARMED) ? defuseBuffer : String("");
-  }
+  return model;
 }
 
 #ifdef APP_DEBUG
@@ -162,7 +117,6 @@ static void handleDebugSerialStateChange() {
 
   if (shouldUpdate) {
     setState(requestedState);
-    renderMainUiIfNeeded(getState());
   }
 }
 #endif
@@ -183,7 +137,7 @@ void setup() {
   effects::onBoot();
 
   initInputs();
-  ui::initUI();
+  ui::resetUiState();
   network::beginWifi();
   configuredBombDurationMs = network::getConfiguredBombDurationMs();
 }
@@ -193,7 +147,8 @@ void loop() {
 
   if (now - lastInputsUpdateMs >= 5) {
     lastInputsUpdateMs = now;
-    updateInputs();
+    const InputSnapshot snapshot = readInputSnapshot();
+    applyGameInputs(mapSnapshotToInputs(snapshot));
   }
 
   if (now - lastWifiUpdateMs >= 200) {
@@ -217,20 +172,10 @@ void loop() {
     // Keep the cached bomb duration aligned with any persisted updates.
     configuredBombDurationMs = network::getConfiguredBombDurationMs();
 
-    renderBootScreenIfNeeded();
-
-    if (network::isConfigPortalActive()) {
-      if (!configScreenRendered) {
-        ui::renderConfigPortalScreen(network::getConfigPortalSsid(), network::getConfigPortalPassword());
-        configScreenRendered = true;
-      }
-    } else if (configScreenRendered) {
-      // Force boot/main UI to refresh after leaving config mode.
-      configScreenRendered = false;
-      mainScreenInitialized = false;
-    }
-
-    renderMainUiIfNeeded(getState());
+    GameOutputs outputs = getGameOutputs();
+    effects::setArmingProgress(outputs.armingProgress01);
+    UiModel model = buildUiModel(outputs);
+    ui::renderUi(model);
 
 #ifdef APP_DEBUG
     handleDebugSerialStateChange();
@@ -252,10 +197,8 @@ void loop() {
   if (getState() == ON) {
     if (network::hasReceivedApiResponse()) {
       setState(READY);
-      renderMainUiIfNeeded(getState());
     } else if (network::hasWifiFailedPermanently()) {
       setState(ERROR_STATE);
-      renderMainUiIfNeeded(getState());
     }
   }
 }
