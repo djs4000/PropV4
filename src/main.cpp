@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <IRremote.hpp>
 
+#include "core/game_state.h"
+#include "core/scheduler.h"
 #include "effects.h"
 #include "game_config.h"
 #include "inputs.h"
@@ -10,15 +12,6 @@
 #include "util.h"
 #include "wifi_config.h"
 
-// Cooperative scheduler timestamps
-static uint32_t lastInputsUpdateMs = 0;
-static uint32_t lastStateUpdateMs = 0;
-static uint32_t lastUiUpdateMs = 0;
-static uint32_t lastEffectsUpdateMs = 0;
-static uint32_t lastApiUpdateMs = 0;
-static uint32_t lastWifiUpdateMs = 0;
-static uint32_t lastWebUiUpdateMs = 0;
-
 static uint32_t configuredBombDurationMs = DEFAULT_BOMB_DURATION_MS;
 static bool mainScreenInitialized = false;
 static FlameState lastRenderedState = ON;
@@ -27,6 +20,75 @@ static uint32_t lastRenderedRemainingCs = 0;
 static float lastRenderedArmingProgress = -1.0f;
 static String lastRenderedDefuseBuffer;
 static bool configScreenRendered = false;
+
+static InputSnapshot lastInputs = {};
+
+static void taskInputs(uint32_t now) { updateInputs(lastInputs); }
+
+static void taskWifi(uint32_t now) { network::updateWifi(); }
+
+static GameOutputs lastGameOutputs;
+
+static void taskState(uint32_t now) {
+  GameInputs inputs;
+  inputs.bothButtonsHeld = lastInputs.bothButtonsHeld;
+  inputs.irConfirmationReceived = lastInputs.irBlastReceived || consumeIrConfirmation();
+  inputs.wifiConnected = network::isWifiConnected();
+
+  const uint64_t lastSuccess = network::getLastSuccessfulApiMs();
+  inputs.apiTimedOut = inputs.wifiConnected && (now - lastSuccess >= API_TIMEOUT_MS);
+  inputs.gameOverRemoteStatus = network::hasReceivedApiResponse() &&
+                                (network::getRemoteMatchStatus() == WaitingOnFinalData ||
+                                 network::getRemoteMatchStatus() == Completed || network::getRemoteMatchStatus() == Cancelled);
+
+  game_tick(inputs, lastGameOutputs, now);
+}
+
+static void taskEffects(uint32_t now) { effects::update(now); }
+
+static void taskUi(uint32_t now) {
+  // Keep the cached bomb duration aligned with any persisted updates.
+  configuredBombDurationMs = network::getConfiguredBombDurationMs();
+
+  renderBootScreenIfNeeded();
+
+  if (network::isConfigPortalActive()) {
+    if (!configScreenRendered) {
+      ui::renderConfigPortalScreen(network::getConfigPortalSsid(), network::getConfigPortalPassword());
+      configScreenRendered = true;
+    }
+  } else if (configScreenRendered) {
+    // Force boot/main UI to refresh after leaving config mode.
+    configScreenRendered = false;
+    mainScreenInitialized = false;
+  }
+
+  renderMainUiIfNeeded(getState());
+
+#ifdef APP_DEBUG
+  handleDebugSerialStateChange();
+#endif
+}
+
+static void taskConfigPortal(uint32_t now) { network::updateConfigPortal(now, getState()); }
+
+static void taskApi(uint32_t now) {
+  if (network::isWifiConnected()) {
+    network::updateApi();
+  }
+}
+
+static void taskStateFromNetwork(uint32_t now) {
+  if (getState() == ON) {
+    if (network::hasReceivedApiResponse()) {
+      setState(READY);
+      renderMainUiIfNeeded(getState());
+    } else if (network::hasWifiFailedPermanently()) {
+      setState(ERROR_STATE);
+      renderMainUiIfNeeded(getState());
+    }
+  }
+}
 
 static void renderBootScreenIfNeeded() {
   if (mainScreenInitialized) {
@@ -177,7 +239,7 @@ void setup() {
 #endif
 
   // Initial state on boot
-  setState(ON);
+  game_init();
 
   effects::init();
   effects::onBoot();
@@ -186,76 +248,17 @@ void setup() {
   ui::initUI();
   network::beginWifi();
   configuredBombDurationMs = network::getConfiguredBombDurationMs();
+
+  scheduler_addTask(taskInputs, 5);
+  scheduler_addTask(taskWifi, 200);
+  scheduler_addTask(taskState, 10);
+  scheduler_addTask(taskEffects, 42);
+  scheduler_addTask(taskUi, 42);
+  scheduler_addTask(taskConfigPortal, 200);
+  scheduler_addTask(taskApi, API_POST_INTERVAL_MS);
+  scheduler_addTask(taskStateFromNetwork, 250);
 }
 
 void loop() {
-  const uint32_t now = millis();
-
-  if (now - lastInputsUpdateMs >= 5) {
-    lastInputsUpdateMs = now;
-    updateInputs();
-  }
-
-  if (now - lastWifiUpdateMs >= 200) {
-    lastWifiUpdateMs = now;
-    network::updateWifi();
-  }
-
-  if (now - lastStateUpdateMs >= 10) {
-    lastStateUpdateMs = now;
-    updateState();
-  }
-
-  if (now - lastEffectsUpdateMs >= 42) {
-    lastEffectsUpdateMs = now;
-    effects::update(now);
-  }
-
-  if (now - lastUiUpdateMs >= 42) {
-    lastUiUpdateMs = now;
-
-    // Keep the cached bomb duration aligned with any persisted updates.
-    configuredBombDurationMs = network::getConfiguredBombDurationMs();
-
-    renderBootScreenIfNeeded();
-
-    if (network::isConfigPortalActive()) {
-      if (!configScreenRendered) {
-        ui::renderConfigPortalScreen(network::getConfigPortalSsid(), network::getConfigPortalPassword());
-        configScreenRendered = true;
-      }
-    } else if (configScreenRendered) {
-      // Force boot/main UI to refresh after leaving config mode.
-      configScreenRendered = false;
-      mainScreenInitialized = false;
-    }
-
-    renderMainUiIfNeeded(getState());
-
-#ifdef APP_DEBUG
-    handleDebugSerialStateChange();
-#endif
-  }
-
-  // Throttle web UI servicing to reduce load during ACTIVE/ARMING while keeping config responsive.
-  if (now - lastWebUiUpdateMs >= 200) {
-    lastWebUiUpdateMs = now;
-    network::updateConfigPortal(now, getState());
-  }
-
-  if (network::isWifiConnected() && now - lastApiUpdateMs >= API_POST_INTERVAL_MS) {
-    lastApiUpdateMs = now;
-    network::updateApi();
-  }
-
-  // Drive WiFi-dependent state changes without blocking the loop.
-  if (getState() == ON) {
-    if (network::hasReceivedApiResponse()) {
-      setState(READY);
-      renderMainUiIfNeeded(getState());
-    } else if (network::hasWifiFailedPermanently()) {
-      setState(ERROR_STATE);
-      renderMainUiIfNeeded(getState());
-    }
-  }
+  scheduler_run(millis());
 }

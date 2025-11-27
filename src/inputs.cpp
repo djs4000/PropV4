@@ -5,12 +5,8 @@
 #include "inputs.h"
 
 #include <Wire.h>
-#include <cstring>
 
-#include "effects.h"
 #include "game_config.h"
-#include "network.h"
-#include "state_machine.h"
 
 namespace {
 constexpr uint8_t KEYPAD_ADDR = 0x20;   // PCF8574 for 4x4 keypad
@@ -22,24 +18,15 @@ constexpr uint32_t I2C_FREQ = 100000;   // 100kHz per agents.md
 constexpr uint32_t KEY_DEBOUNCE_MS = 50;
 constexpr uint32_t BUTTON_DEBOUNCE_MS = 30;
 
-// Key map matches a standard 4x4 matrix; only numeric keys are acted upon.
+// Key map matches a standard 4x4 matrix; only numeric keys are surfaced.
 constexpr char KEY_MAP[4][4] = {{'1', '2', '3', 'A'},
                                 {'4', '5', '6', 'B'},
                                 {'7', '8', '9', 'C'},
                                 {'*', '0', '#', 'D'}};
 
-char defuseBuffer[DEFUSE_CODE_LENGTH + 1] = {0};
-uint8_t enteredDigits = 0;
-FlameState lastState = ON;
-uint32_t keypadLockedUntilMs = 0;
-
-bool lastButtonsRaw = false;
-bool debouncedButtons = false;
-uint32_t buttonsChangeMs = 0;
-
-char lastKeyRaw = '\0';
-char debouncedKey = '\0';
-uint32_t keyChangeMs = 0;
+static char defuseBuffer[DEFUSE_CODE_LENGTH + 1] = {0};
+static uint8_t enteredDigits = 0;
+static bool irConfirmationPending = false;
 
 bool writePcf(uint8_t addr, uint8_t value) {
   Wire.beginTransmission(addr);
@@ -55,11 +42,6 @@ bool readPcf(uint8_t addr, uint8_t &value) {
   return true;
 }
 
-void resetDefuseBuffer() {
-  memset(defuseBuffer, 0, sizeof(defuseBuffer));
-  enteredDigits = 0;
-}
-
 bool areBothButtonsPressedRaw() {
   uint8_t value = 0;
   if (!readPcf(BUTTON_ADDR, value)) {
@@ -72,7 +54,6 @@ bool areBothButtonsPressedRaw() {
 }
 
 char scanKeypadRaw() {
-  // Drive one column low at a time and read the rows.
   for (uint8_t col = 0; col < 4; ++col) {
     uint8_t mask = 0xFF;
     mask &= static_cast<uint8_t>(~(1 << (4 + col)));  // Pull selected column low
@@ -99,54 +80,82 @@ char scanKeypadRaw() {
   writePcf(KEYPAD_ADDR, 0xFF);
   return '\0';
 }
-
-void handleDigitPress(char digit) {
-  const FlameState state = getState();
-  if (state != ARMED) {
-    resetDefuseBuffer();
-    return;
-  }
-
-  bool digitAdded = false;
-  if (enteredDigits < DEFUSE_CODE_LENGTH) {
-    // Provide immediate feedback on accepted numeric keypresses while armed.
-    effects::onKeypadKey();
-    defuseBuffer[enteredDigits++] = digit;
-    defuseBuffer[enteredDigits] = '\0';
-    digitAdded = true;
-  }
-
-  if (digitAdded && enteredDigits >= DEFUSE_CODE_LENGTH) {
-    const String &configured = network::getConfiguredDefuseCode();
-    const bool matches = configured.length() == DEFUSE_CODE_LENGTH && configured.equals(defuseBuffer);
-
-    if (matches) {
-      setState(DEFUSED);
-    } else {
-      effects::onWrongCode();
-      keypadLockedUntilMs = millis() + effects::getWrongCodeBeepDurationMs();
-    }
-
-    resetDefuseBuffer();
-  }
-}
 }  // namespace
 
-static bool irConfirmationPending = false;
+void initInputs() {
+  Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ);
 
-void initIr() { IrReceiver.begin(27, ENABLE_LED_FEEDBACK); }
+  // Default all PCF8574 pins high so rows/columns float and buttons read as idle.
+  writePcf(KEYPAD_ADDR, 0xFF);
+  writePcf(BUTTON_ADDR, 0xFF);
 
-void updateIr() {
-  // Only treat a decode as a valid confirmation when the arming confirmation
-  // window is active to avoid stale/unrelated IR noise auto-confirming arming
-  // on plug-in.
+  IrReceiver.begin(27, ENABLE_LED_FEEDBACK);
+}
+
+void updateInputs(InputSnapshot &snapshot) {
+  const uint32_t now = millis();
+  static bool lastButtonsRaw = false;
+  static bool debouncedButtons = false;
+  static uint32_t buttonsChangeMs = 0;
+
+  static char lastKeyRaw = '\0';
+  static char debouncedKey = '\0';
+  static uint32_t keyChangeMs = 0;
+
   if (IrReceiver.decode()) {
     const bool validPayload = IrReceiver.decodedIRData.protocol != UNKNOWN && IrReceiver.decodedIRData.numberOfBits > 0;
-    if (validPayload && getState() == ARMING && isIrConfirmationWindowActive()) {
+    if (validPayload) {
       irConfirmationPending = true;
     }
     IrReceiver.resume();
   }
+
+  // Debounce both-button hold detection for ARMING/ERROR reset.
+  const bool rawButtonsPressed = areBothButtonsPressedRaw();
+  if (rawButtonsPressed != lastButtonsRaw) {
+    buttonsChangeMs = now;
+    lastButtonsRaw = rawButtonsPressed;
+  }
+
+  if (now - buttonsChangeMs >= BUTTON_DEBOUNCE_MS && debouncedButtons != rawButtonsPressed) {
+    snapshot.bothButtonsJustReleased = debouncedButtons && !rawButtonsPressed;
+    debouncedButtons = rawButtonsPressed;
+#ifdef APP_DEBUG
+    Serial.println(debouncedButtons ? "BUTTONS: both pressed" : "BUTTONS: released");
+#endif
+  } else {
+    snapshot.bothButtonsJustReleased = false;
+  }
+  snapshot.bothButtonsHeld = debouncedButtons;
+
+  // Debounce keypad entries to feed into the game core.
+  const char rawKey = scanKeypadRaw();
+  if (rawKey != lastKeyRaw) {
+    keyChangeMs = now;
+    lastKeyRaw = rawKey;
+  }
+
+  snapshot.keypadDigitAvailable = false;
+  if (now - keyChangeMs >= KEY_DEBOUNCE_MS && debouncedKey != rawKey) {
+    debouncedKey = rawKey;
+    if (debouncedKey >= '0' && debouncedKey <= '9') {
+      snapshot.keypadDigitAvailable = true;
+      snapshot.keypadDigit = debouncedKey;
+      if (enteredDigits < DEFUSE_CODE_LENGTH) {
+        defuseBuffer[enteredDigits++] = debouncedKey;
+        defuseBuffer[enteredDigits] = '\0';
+      } else {
+        enteredDigits = 0;
+        defuseBuffer[enteredDigits] = '\0';
+      }
+#ifdef APP_DEBUG
+      Serial.print("KEYPAD: ");
+      Serial.println(debouncedKey);
+#endif
+    }
+  }
+
+  snapshot.irBlastReceived = irConfirmationPending;
 }
 
 bool consumeIrConfirmation() {
@@ -159,82 +168,11 @@ bool consumeIrConfirmation() {
 
 void clearIrConfirmation() { irConfirmationPending = false; }
 
-void initInputs() {
-  Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ);
-
-  // Default all PCF8574 pins high so rows/columns float and buttons read as idle.
-  writePcf(KEYPAD_ADDR, 0xFF);
-  writePcf(BUTTON_ADDR, 0xFF);
-
-  initIr();
-  resetDefuseBuffer();
-}
-
-void updateInputs() {
-  const uint32_t now = millis();
-  const FlameState state = getState();
-
-  updateIr();
-
-  if (state != lastState) {
-    resetDefuseBuffer();
-    lastState = state;
-  }
-
-  // Debounce both-button hold detection for ARMING/ERROR reset.
-  const bool rawButtonsPressed = areBothButtonsPressedRaw();
-  if (rawButtonsPressed != lastButtonsRaw) {
-    buttonsChangeMs = now;
-    lastButtonsRaw = rawButtonsPressed;
-  }
-
-  if (now - buttonsChangeMs >= BUTTON_DEBOUNCE_MS && debouncedButtons != rawButtonsPressed) {
-    debouncedButtons = rawButtonsPressed;
-#ifdef APP_DEBUG
-    Serial.println(debouncedButtons ? "BUTTONS: both pressed" : "BUTTONS: released");
-#endif
-    if (debouncedButtons) {
-      startButtonHold();
-    } else {
-      const bool holdCompleted = getButtonHoldStartMs() != 0 && (now - getButtonHoldStartMs() >= BUTTON_HOLD_MS);
-      if (getState() == ARMING && holdCompleted) {
-        // Allow buttons to be released during the IR confirmation window.
-      } else {
-        stopButtonHold();
-      }
-    }
-  }
-
-  // Debounce keypad entries to build the defuse code buffer, unless locked
-  // while error tones play.
-  if (now < keypadLockedUntilMs) {
-    lastKeyRaw = '\0';
-    debouncedKey = '\0';
-    writePcf(KEYPAD_ADDR, 0xFF);
-  } else {
-    const char rawKey = scanKeypadRaw();
-    if (rawKey != lastKeyRaw) {
-      keyChangeMs = now;
-      lastKeyRaw = rawKey;
-    }
-
-    if (now - keyChangeMs >= KEY_DEBOUNCE_MS && debouncedKey != rawKey) {
-      debouncedKey = rawKey;
-#ifdef APP_DEBUG
-      if (debouncedKey != '\0') {
-        Serial.print("KEYPAD: ");
-        Serial.println(debouncedKey);
-      }
-#endif
-      if (debouncedKey >= '0' && debouncedKey <= '9') {
-        handleDigitPress(debouncedKey);
-      }
-    }
-  }
-}
-
 uint8_t getEnteredDigits() { return enteredDigits; }
 
 const char *getDefuseBuffer() { return defuseBuffer; }
 
-void clearDefuseBuffer() { resetDefuseBuffer(); }
+void clearDefuseBuffer() {
+  enteredDigits = 0;
+  defuseBuffer[0] = '\0';
+}

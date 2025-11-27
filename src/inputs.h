@@ -1,20 +1,25 @@
 #pragma once
 
-// Stub input module for keypad and buttons.
 #include <Arduino.h>
 
-void initInputs();
-void updateInputs();
-void initIr();
-void updateIr();
+struct InputSnapshot {
+  bool bothButtonsHeld = false;
+  bool bothButtonsJustReleased = false;
+  bool keypadDigitAvailable = false;
+  char keypadDigit = '\0';
+  bool irBlastReceived = false;
+};
 
-// Returns true once when an IR confirmation blast is received.
+// Legacy helpers retained for compatibility with the existing rendering paths.
 bool consumeIrConfirmation();
 void clearIrConfirmation();
-
-// Helper for UI to know how many defuse digits are currently buffered.
 uint8_t getEnteredDigits();
-
-// Expose the current defuse buffer for on-screen rendering and reset control.
 const char *getDefuseBuffer();
 void clearDefuseBuffer();
+
+// Initializes keypad, buttons, and IR receiver.
+void initInputs();
+
+// Polls keypad/buttons/IR with debouncing. Non-blocking and writes the latest
+// snapshot for consumption by the game core.
+void updateInputs(InputSnapshot &snapshot);

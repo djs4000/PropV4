@@ -269,6 +269,19 @@ void updateState() {
       if (currentMatchStatus == WaitingOnStart || currentMatchStatus == Countdown) {
         setState(READY);
       }
+
+      if (getEnteredDigits() >= DEFUSE_CODE_LENGTH) {
+        const String &configured = network::getConfiguredDefuseCode();
+        const bool matches = configured.length() == DEFUSE_CODE_LENGTH && configured.equals(getDefuseBuffer());
+
+        if (matches) {
+          setState(DEFUSED);
+        } else {
+          effects::onWrongCode();
+        }
+
+        clearDefuseBuffer();
+      }
       break;
 
     case DEFUSED:
