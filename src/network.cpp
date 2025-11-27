@@ -321,23 +321,27 @@ void updateApi() {
   // Keep outbound state/timer in sync with the current state machine status.
   outboundState = getState();
   uint32_t timerMs = 0;
+  bool includeTimer = false;
   if (outboundState == ARMED && isBombTimerActive()) {
     timerMs = getBombTimerRemainingMs();
-  } else if (isGameTimerValid()) {
-    timerMs = getGameTimerRemainingMs();
+    includeTimer = true;
   }
   outboundTimerMs = timerMs;
 
   const uint32_t payloadNowMs = millis();
-  int64_t timestampTicks = 0;
+  int64_t timestampEpochMs = 0;
   if (time_sync::isValid()) {
-    timestampTicks = time_sync::getCurrentServerTicks(payloadNowMs);
+    timestampEpochMs = time_sync::getCurrentEpochMs(payloadNowMs);
   }
 
   JsonDocument doc;
   doc["state"] = flameStateToString(outboundState);
-  doc["timer"] = outboundTimerMs;
-  doc["timestamp"] = timestampTicks;
+  if (includeTimer) {
+    doc["timer"] = outboundTimerMs;
+  } else {
+    doc["timer"] = "";
+  }
+  doc["timestamp"] = timestampEpochMs;
 
   String payload;
   serializeJson(doc, payload);
@@ -397,19 +401,32 @@ void updateApi() {
       MatchStatus parsedStatus;
       const bool statusParsed = util::parseMatchStatus(statusStr, parsedStatus);
 
+      int64_t serverTimestampMs = 0;
+      bool hasTimestamp = false;
       const JsonVariantConst timestampVariant = respDoc["timestamp"];
       if (!timestampVariant.isNull()) {
-        const int64_t serverTicks = timestampVariant.as<int64_t>();
-        time_sync::updateFromServer(serverTicks, responseNow);
+        serverTimestampMs = timestampVariant.as<int64_t>();
+        hasTimestamp = true;
+        time_sync::updateFromServer(serverTimestampMs, lastApiRequestStartMs, responseNow);
       }
 
-      const uint32_t remainingMs = respDoc["remaining_time_ms"] | 0;
+      uint32_t remainingMs = respDoc["remaining_time_ms"] | 0;
+      if (hasTimestamp && time_sync::isValid()) {
+        const int64_t serverNowEstimate = time_sync::getCurrentEpochMs(responseNow);
+        const int64_t elapsedSinceTimestamp = serverNowEstimate - serverTimestampMs;
+        if (elapsedSinceTimestamp > 0) {
+          remainingMs = (elapsedSinceTimestamp >= static_cast<int64_t>(remainingMs))
+                            ? 0
+                            : remainingMs - static_cast<uint32_t>(elapsedSinceTimestamp);
+        }
+      }
+
       baseRemainingTimeMs = remainingMs;
       baseRemainingTimestampMs = responseNow;
       lastApiResponseMs = responseNow;
       apiResponseReceived = true;
 
-      updateGameTimerFromApi(remainingMs, millis());
+      updateGameTimerFromApi(remainingMs, responseNow);
 
       if (statusParsed) {
         remoteStatus = parsedStatus;
