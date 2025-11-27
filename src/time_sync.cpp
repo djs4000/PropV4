@@ -6,20 +6,22 @@ TimeSyncState g_timeSync;
 
 namespace time_sync {
 
-void updateFromServer(int64_t serverTicks, uint32_t nowMs) {
+void updateFromServer(int64_t serverEpochMs, uint32_t requestStartMs, uint32_t responseNowMs) {
+  const uint32_t rttMs = responseNowMs - requestStartMs;
+  const int64_t oneWayMs = static_cast<int64_t>(rttMs) / 2;
+
   g_timeSync.valid = true;
-  g_timeSync.baseServerTicks = serverTicks;
-  g_timeSync.baseMillis = nowMs;
+  g_timeSync.baseServerEpochMs = serverEpochMs + oneWayMs;
+  g_timeSync.baseMillis = responseNowMs;
 }
 
-int64_t getCurrentServerTicks(uint32_t nowMs) {
+int64_t getCurrentEpochMs(uint32_t nowMs) {
   if (!g_timeSync.valid) {
     return 0;
   }
 
   const uint32_t deltaMs = nowMs - g_timeSync.baseMillis;
-  const int64_t deltaTicks = static_cast<int64_t>(deltaMs) * 10000;
-  return g_timeSync.baseServerTicks + deltaTicks;
+  return g_timeSync.baseServerEpochMs + static_cast<int64_t>(deltaMs);
 }
 
 bool isValid() { return g_timeSync.valid; }
