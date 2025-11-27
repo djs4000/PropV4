@@ -307,6 +307,7 @@ void updateApi() {
   http.setTimeout(2000);
   http.addHeader("Content-Type", "application/json");
   const int httpCode = http.POST(payload);
+  const uint32_t responseNow = millis();
 
   if (mode == ApiMode::TestSendOnly) {
     if (httpCode != HTTP_CODE_OK) {
@@ -316,7 +317,7 @@ void updateApi() {
 #endif
     }
     // Keep timeout logic from firing in this mode regardless of response.
-    lastSuccessfulApiMs = now;
+    lastSuccessfulApiMs = responseNow;
     http.end();
     return;
   }
@@ -334,28 +335,28 @@ void updateApi() {
       const JsonVariantConst timestampVariant = respDoc["timestamp"];
       if (!timestampVariant.isNull()) {
         const int64_t serverTicks = timestampVariant.as<int64_t>();
-        time_sync::updateFromServer(serverTicks, now);
+        time_sync::updateFromServer(serverTicks, responseNow);
       }
 
       const uint32_t remainingMs = respDoc["remaining_time_ms"] | 0;
       baseRemainingTimeMs = remainingMs;
-      baseRemainingTimestampMs = now;
-      lastApiResponseMs = now;
+      baseRemainingTimestampMs = responseNow;
+      lastApiResponseMs = responseNow;
       apiResponseReceived = true;
 
-      updateGameTimerFromApi(remainingMs);
+      updateGameTimerFromApi(remainingMs, millis());
 
       if (statusParsed) {
         remoteStatus = parsedStatus;
       }
 
       // Treat a well-formed JSON body as a successful API interaction for timeout tracking.
-      lastSuccessfulApiMs = now;
+      lastSuccessfulApiMs = responseNow;
 
-      const uint32_t rttMs = now - lastApiRequestStartMs;
+      const uint32_t rttMs = responseNow - lastApiRequestStartMs;
 
       if (lastSuccessfulApiDebugMs != 0) {
-        const uint32_t delta = now - lastSuccessfulApiDebugMs;
+        const uint32_t delta = responseNow - lastSuccessfulApiDebugMs;
         const uint32_t intervals = delta / API_POST_INTERVAL_MS;
         if (intervals > 1) {
 #ifdef APP_DEBUG
@@ -365,7 +366,7 @@ void updateApi() {
         }
       }
 
-      lastSuccessfulApiDebugMs = now;
+      lastSuccessfulApiDebugMs = responseNow;
 
 #ifdef APP_DEBUG
       Serial.print("API status: ");

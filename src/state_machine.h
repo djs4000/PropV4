@@ -2,27 +2,7 @@
 
 #include <Arduino.h>
 
-// Flame state definitions follow agents.md strictly.
-enum FlameState {
-  ON,
-  READY,
-  ACTIVE,
-  ARMING,
-  ARMED,
-  DEFUSED,
-  DETONATED,
-  ERROR_STATE
-};
-
-// Match status values returned by the backend API.
-enum MatchStatus {
-  WaitingOnStart,
-  Countdown,
-  Running,
-  WaitingOnFinalData,
-  Completed,
-  Cancelled
-};
+#include "core/game_state.h"
 
 // Accessors and update routine
 FlameState getState();
@@ -34,7 +14,7 @@ void setMatchStatus(MatchStatus status);
 MatchStatus getMatchStatus();
 
 // Game timer synchronization (authoritative data from API with local backup countdown).
-void updateGameTimerFromApi(uint32_t remainingMs);
+void updateGameTimerFromApi(uint32_t remainingMs, uint32_t nowMs);
 bool isGameTimerValid();
 uint32_t getGameTimerRemainingMs();
 
@@ -44,7 +24,7 @@ uint32_t getBombTimerRemainingMs();
 uint32_t getBombTimerDurationMs();
 
 // Button hold helpers (driven by inputs module)
-void startButtonHold();
+void startButtonHold(uint32_t nowMs);
 void stopButtonHold();
 bool isButtonHoldActive();
 uint32_t getButtonHoldStartMs();

@@ -9,111 +9,60 @@
 #include "util.h"
 
 namespace {
-FlameState currentState = ON;
-MatchStatus currentMatchStatus = WaitingOnStart;
-
-// Game timer derived from API with local backup countdown when responses pause.
-bool gameTimerValid = false;
-uint32_t gameTimerRemainingMs = 0;
-uint32_t gameTimerLastUpdateMs = 0;
-
-// Bomb timer that begins when the device enters ARMED.
-bool bombTimerActive = false;
-uint32_t bombTimerDurationMs = 0;
-uint32_t bombTimerRemainingMs = 0;
-uint32_t bombTimerLastUpdateMs = 0;
-
-// Tracks how long both buttons have been held during ARMING/ERROR recovery.
-uint32_t armingHoldStartMs = 0;
-bool armingHoldActive = false;
-
-bool isGlobalTimeoutTriggered() {
-  const uint64_t now = millis();
-  const uint64_t lastSuccess = network::getLastSuccessfulApiMs();
-  return network::isWifiConnected() && (now - lastSuccess >= API_TIMEOUT_MS);
+GameInputs buildGameInputs() {
+  GameInputs inputs{};
+  inputs.nowMs = millis();
+  inputs.wifiConnected = network::isWifiConnected();
+  inputs.lastSuccessfulApiMs = network::getLastSuccessfulApiMs();
+  inputs.apiResponseReceived = network::hasReceivedApiResponse();
+  inputs.remoteMatchStatus = network::getRemoteMatchStatus();
+  inputs.configuredBombDurationMs = network::getConfiguredBombDurationMs();
+  inputs.irConfirmationReceived = consumeIrConfirmation();
+  return inputs;
 }
 
-bool armingHoldComplete = false;
-uint32_t irWindowStartMs = 0;
-bool irWindowActive = false;
-
-void resetArmingFlow() {
-  armingHoldComplete = false;
-  irWindowActive = false;
-  irWindowStartMs = 0;
-  clearIrConfirmation();
-}
-
-bool isGameOverStatus(MatchStatus status) {
-  return status == WaitingOnFinalData || status == Completed || status == Cancelled;
-}
-
-bool isGameTimerCountdownAllowed() {
-  return currentState == ACTIVE || currentState == ARMING || currentState == ARMED;
-}
-
-void updateGameTimerCountdown() {
-  if (!gameTimerValid) {
-    return;
+void applyOutputs(const GameOutputs &outputs) {
+  if (outputs.gameOverSet) {
+    ui::setGameOver(outputs.gameOver);
   }
 
-  if (!isGameTimerCountdownAllowed()) {
-    gameTimerLastUpdateMs = millis();
-    return;
+  if (outputs.clearIrConfirmation) {
+    clearIrConfirmation();
   }
 
-  const uint32_t now = millis();
-  const uint32_t delta = now - gameTimerLastUpdateMs;
-  gameTimerLastUpdateMs = now;
-
-  if (delta == 0 || gameTimerRemainingMs == 0) {
-    return;
+  if (outputs.clearDefuseBuffer) {
+    clearDefuseBuffer();
   }
 
-  if (delta >= gameTimerRemainingMs) {
-    gameTimerRemainingMs = 0;
-  } else {
-    gameTimerRemainingMs -= delta;
+  if (outputs.showArmingConfirmPrompt) {
+    ui::showArmingConfirmPrompt();
+  }
+
+  if (outputs.armingConfirmNeededEffect) {
+    effects::onArmingConfirmNeeded();
+  }
+
+  if (outputs.armingConfirmedEffect) {
+    effects::onArmingConfirmed();
+  }
+
+  if (outputs.wrongCodeEffect) {
+    effects::onWrongCode();
+  }
+
+  if (outputs.stateChanged) {
+#ifdef APP_DEBUG
+    Serial.print("STATE: ");
+    Serial.print(flameStateToString(outputs.previousState));
+    Serial.print(" -> ");
+    Serial.println(flameStateToString(outputs.newState));
+#endif
+    effects::onStateChanged(outputs.previousState, outputs.newState);
   }
 }
+}  // namespace
 
-void updateBombTimerCountdown() {
-  if (!bombTimerActive) {
-    return;
-  }
-
-  if (currentState != ARMED) {
-    bombTimerActive = false;
-    return;
-  }
-
-  const uint32_t now = millis();
-  const uint32_t delta = now - bombTimerLastUpdateMs;
-  bombTimerLastUpdateMs = now;
-
-  if (delta == 0 || bombTimerRemainingMs == 0) {
-    return;
-  }
-
-  if (delta >= bombTimerRemainingMs) {
-    bombTimerRemainingMs = 0;
-  } else {
-    bombTimerRemainingMs -= delta;
-  }
-
-  if (bombTimerRemainingMs == 0 && currentState == ARMED) {
-    bombTimerActive = false;
-    setState(DETONATED);
-  }
-}
-
-void updateTimers() {
-  updateGameTimerCountdown();
-  updateBombTimerCountdown();
-}
-}
-
-FlameState getState() { return currentState; }
+FlameState getState() { return game_state::get_state(); }
 
 void setState(FlameState newState) {
   if (newState == currentState) {
@@ -152,226 +101,40 @@ void setState(FlameState newState) {
 }
 
 void updateState() {
-  // Apply global networking timeout rule first for all non-error states.
-  if (currentState != ERROR_STATE && isGlobalTimeoutTriggered()) {
-#ifdef APP_DEBUG
-    Serial.println("Global API timeout triggered; entering ERROR_STATE");
-#endif
-    setState(ERROR_STATE);
-    return;
-  }
-
-  // Sync the latest match status from the network module only after a
-  // successful API response. This prevents manual/debug overrides from being
-  // immediately reset when the API is disabled or hasn't provided data yet.
-  if (network::hasReceivedApiResponse()) {
-    setMatchStatus(network::getRemoteMatchStatus());
-  }
-
-  const bool gameOver = isGameOverStatus(currentMatchStatus) && currentState != DEFUSED && currentState != DETONATED;
-  ui::setGameOver(gameOver);
-  if (gameOver) {
-    gameTimerValid = false;
-    gameTimerRemainingMs = 0;
-    gameTimerLastUpdateMs = millis();
-    bombTimerActive = false;
-    bombTimerRemainingMs = 0;
-    resetArmingFlow();
-    stopButtonHold();
-    if (currentState == ARMED || currentState == ARMING || currentState == ACTIVE) {
-      setState(READY);
-      return;
-    }
-  }
-
-  if (currentMatchStatus == WaitingOnStart) {
-    resetArmingFlow();
-    stopButtonHold();
-    clearIrConfirmation();
-    clearDefuseBuffer();
-  }
-
-  // Placeholder button handling: actual input module will call into the state
-  // machine to start/stop arming. For now we maintain stub timing logic to
-  // illustrate the non-blocking pattern without implementing hardware reads.
-  const FlameState startingState = currentState;
-  updateTimers();
-  if (currentState != startingState) {
-    return;  // A timer transition changed state; defer additional logic until next tick.
-  }
-
-  const uint32_t now = millis();
-
-  switch (currentState) {
-    case ON:
-      break;
-
-    case READY:
-      if (currentMatchStatus == Running) {
-        setState(ACTIVE);
-      }
-      break;
-
-    case ACTIVE:
-      // Both buttons pressed immediately transitions to ARMING; hold timer is
-      // tracked for the subsequent ARMING->ARMED promotion.
-      if (armingHoldActive) {
-        setState(ARMING);
-      }
-      if (currentMatchStatus == WaitingOnStart || currentMatchStatus == Countdown ||
-          currentMatchStatus == WaitingOnFinalData) {
-        setState(READY);
-      }
-      break;
-
-    case ARMING:
-      // Hold timer continues; if released early, revert to ACTIVE.
-      if (currentMatchStatus == WaitingOnStart || currentMatchStatus == Countdown ||
-          currentMatchStatus == WaitingOnFinalData) {
-        resetArmingFlow();
-        stopButtonHold();
-        setState(READY);
-        break;
-      }
-
-      if (!armingHoldActive) {
-        resetArmingFlow();
-        setState(ACTIVE);
-        break;
-      }
-
-      if (!armingHoldComplete && (now - armingHoldStartMs >= BUTTON_HOLD_MS)) {
-        armingHoldComplete = true;
-        irWindowActive = true;
-        irWindowStartMs = now;
-        ui::showArmingConfirmPrompt();
-        effects::onArmingConfirmNeeded();
-      }
-
-      if (irWindowActive) {
-        if (consumeIrConfirmation()) {
-          effects::onArmingConfirmed();
-          setState(ARMED);
-          resetArmingFlow();
-          stopButtonHold();
-          break;
-        }
-
-        if (now - irWindowStartMs >= IR_CONFIRM_WINDOW_MS) {
-          effects::onWrongCode();
-          resetArmingFlow();
-          stopButtonHold();
-          setState(ACTIVE);
-        }
-      }
-      break;
-
-    case ARMED:
-      if (currentMatchStatus == WaitingOnStart || currentMatchStatus == Countdown) {
-        setState(READY);
-      }
-      break;
-
-    case DEFUSED:
-      if (currentMatchStatus == WaitingOnStart || currentMatchStatus == Countdown) {
-        setState(READY);
-      }
-      break;
-
-    case DETONATED:
-      if (currentMatchStatus == WaitingOnStart || currentMatchStatus == Countdown) {
-        setState(READY);
-      }
-      break;
-
-    case ERROR_STATE:
-      // Placeholder: reset to ON after BUTTON_HOLD_MS of both buttons pressed.
-      if (armingHoldActive && (now - armingHoldStartMs >= BUTTON_HOLD_MS)) {
-        stopButtonHold();
-        setState(ON);
-      }
-      break;
-  }
+  GameInputs inputs = buildGameInputs();
+  GameOutputs outputs{};
+  game_state::game_tick(inputs, outputs);
+  applyOutputs(outputs);
 }
 
-void startButtonHold() {
-  if (armingHoldActive) {
-    return;
-  }
-  armingHoldActive = true;
-  armingHoldStartMs = millis();
+void setMatchStatus(MatchStatus status) { game_state::set_match_status(status); }
+
+MatchStatus getMatchStatus() { return game_state::get_match_status(); }
+
+void updateGameTimerFromApi(uint32_t remainingMs, uint32_t nowMs) {
+  game_state::update_game_timer_from_api(remainingMs, nowMs);
 }
 
-void stopButtonHold() {
-  armingHoldActive = false;
-  armingHoldStartMs = 0;
-  resetArmingFlow();
-}
+bool isGameTimerValid() { return game_state::is_game_timer_valid(); }
 
-bool isButtonHoldActive() { return armingHoldActive; }
+uint32_t getGameTimerRemainingMs() { return game_state::get_game_timer_remaining_ms(); }
 
-uint32_t getButtonHoldStartMs() { return armingHoldStartMs; }
+bool isBombTimerActive() { return game_state::is_bomb_timer_active(); }
 
-bool isIrConfirmationWindowActive() { return irWindowActive; }
+uint32_t getBombTimerRemainingMs() { return game_state::get_bomb_timer_remaining_ms(); }
 
-void setMatchStatus(MatchStatus status) { currentMatchStatus = status; }
+uint32_t getBombTimerDurationMs() { return game_state::get_bomb_timer_duration_ms(); }
 
-MatchStatus getMatchStatus() { return currentMatchStatus; }
+void startButtonHold(uint32_t nowMs) { game_state::start_button_hold(nowMs); }
 
-void updateGameTimerFromApi(uint32_t remainingMs) {
-  gameTimerValid = true;
-  gameTimerRemainingMs = remainingMs;
-  gameTimerLastUpdateMs = millis();
-}
+void stopButtonHold() { game_state::stop_button_hold(); }
 
-bool isGameTimerValid() { return gameTimerValid; }
+bool isButtonHoldActive() { return game_state::is_button_hold_active(); }
 
-uint32_t getGameTimerRemainingMs() { return gameTimerRemainingMs; }
+uint32_t getButtonHoldStartMs() { return game_state::get_button_hold_start_ms(); }
 
-bool isBombTimerActive() { return bombTimerActive; }
+bool isIrConfirmationWindowActive() { return game_state::is_ir_confirmation_window_active(); }
 
-uint32_t getBombTimerRemainingMs() { return bombTimerRemainingMs; }
+const char *flameStateToString(FlameState state) { return game_state::flame_state_to_string(state); }
 
-uint32_t getBombTimerDurationMs() { return bombTimerDurationMs; }
-
-const char *flameStateToString(FlameState state) {
-  switch (state) {
-    case ON:
-      return "On";
-    case READY:
-      return "Ready";
-    case ACTIVE:
-      return "Active";
-    case ARMING:
-      return "Arming";
-    case ARMED:
-      return "Armed";
-    case DEFUSED:
-      return "Defused";
-    case DETONATED:
-      return "Detonated";
-    case ERROR_STATE:
-      return "Error";
-    default:
-      return "Unknown"; // Should not happen; kept for safety.
-  }
-}
-
-const char *matchStatusToString(MatchStatus status) {
-  switch (status) {
-    case WaitingOnStart:
-      return "WaitingOnStart";
-    case Countdown:
-      return "Countdown";
-    case Running:
-      return "Running";
-    case WaitingOnFinalData:
-      return "WaitingOnFinalData";
-    case Completed:
-      return "Completed";
-    case Cancelled:
-      return "Cancelled";
-    default:
-      return "Unknown";
-  }
-}
+const char *matchStatusToString(MatchStatus status) { return game_state::match_status_to_string(status); }
