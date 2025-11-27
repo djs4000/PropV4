@@ -8,7 +8,9 @@ constexpr uint32_t FRAME_INTERVAL_MS = 1000 / 24;  // target ~24 FPS
 constexpr uint8_t BACKLIGHT_PIN = 21;
 constexpr uint8_t TITLE_TEXT_SIZE = 2;
 constexpr uint8_t TIMER_TEXT_SIZE = 5;
+constexpr int16_t TIMER_CLEAR_HEIGHT = 72;
 constexpr uint8_t STATUS_TEXT_SIZE = 2;
+constexpr int16_t STATUS_CLEAR_HEIGHT = 36;
 constexpr uint8_t BOOT_DETAIL_TEXT_SIZE = 1;
 constexpr uint8_t CODE_TEXT_SIZE = 2;
 
@@ -269,7 +271,7 @@ void renderMainUi(const UiModel &model) {
   if (model.state == DETONATED) {
     if (!mainCache.detonatedDrawn) {
       tft.fillScreen(activeTheme.detonatedBackgroundColor);
-      tft.setTextDatum(TC_DATUM);
+      tft.setTextDatum(MC_DATUM);
       tft.setTextSize(TIMER_TEXT_SIZE - 1);
       tft.setTextColor(activeTheme.detonatedTextColor, activeTheme.detonatedBackgroundColor);
       tft.drawString("DETONATED", tft.width() / 2, tft.height() / 2);
@@ -297,7 +299,7 @@ void renderMainUi(const UiModel &model) {
   }
   const String timerString = String(timerBuffer);
   if (timerString != mainCache.timerText || timerColor != mainCache.timerColor) {
-    drawCenteredText(timerString, TIMER_Y, TIMER_TEXT_SIZE, 48, timerColor);
+    drawCenteredText(timerString, TIMER_Y, TIMER_TEXT_SIZE, TIMER_CLEAR_HEIGHT, timerColor);
     mainCache.timerText = timerString;
     mainCache.timerColor = timerColor;
   }
@@ -313,7 +315,7 @@ void renderMainUi(const UiModel &model) {
   }
   if (statusText != mainCache.statusText || statusColor != mainCache.statusColor ||
       mainCache.showArmingPrompt != model.showArmingPrompt) {
-    drawCenteredText(statusText, STATUS_Y, STATUS_TEXT_SIZE, 24, statusColor);
+    drawCenteredText(statusText, STATUS_Y, STATUS_TEXT_SIZE, STATUS_CLEAR_HEIGHT, statusColor);
     mainCache.statusText = statusText;
     mainCache.statusColor = statusColor;
     mainCache.showArmingPrompt = model.showArmingPrompt;
