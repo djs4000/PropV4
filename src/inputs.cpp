@@ -160,7 +160,6 @@ InputSnapshot updateInputs() {
       Serial.println(debouncedKey);
     }
 #endif
-    }
   }
 
   lastSnapshot.nowMs = now;
