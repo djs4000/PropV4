@@ -320,7 +320,7 @@ void updateApi() {
 
   // Keep outbound state/timer in sync with the current state machine status.
   outboundState = getState();
-  uint32_t timerMs = 0;
+  uint32_t timerMs = DEFAULT_BOMB_DURATION_MS;
   bool includeTimer = false;
   if (outboundState == ARMED && isBombTimerActive()) {
     timerMs = getBombTimerRemainingMs();
@@ -339,7 +339,7 @@ void updateApi() {
   if (includeTimer) {
     doc["timer"] = outboundTimerMs;
   } else {
-    doc["timer"] = "";
+    doc["timer"] = DEFAULT_BOMB_DURATION_MS;
   }
   doc["timestamp"] = timestampEpochMs;
 
