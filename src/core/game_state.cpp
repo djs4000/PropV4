@@ -40,7 +40,15 @@ bool isGameTimerCountdownAllowed() {
 }
 
 bool isGlobalTimeoutTriggered(const GameInputs &inputs) {
-  return inputs.wifiConnected && (inputs.nowMs - inputs.lastSuccessfulApiMs >= API_TIMEOUT_MS);
+  if (!inputs.wifiConnected) {
+    return false;
+  }
+
+  if (inputs.nowMs < inputs.lastSuccessfulApiMs) {
+    return false;
+  }
+
+  return (inputs.nowMs - inputs.lastSuccessfulApiMs) >= API_TIMEOUT_MS;
 }
 
 #ifdef APP_DEBUG
@@ -48,11 +56,12 @@ void logErrorTransition(const char *reason, const GameInputs &inputs) {
   Serial.print("[ERROR] Entering ERROR_STATE due to: ");
   Serial.println(reason);
   Serial.printf("    wifiConnected=%s\n", inputs.wifiConnected ? "true" : "false");
+  const uint64_t apiDelta =
+      inputs.nowMs >= inputs.lastSuccessfulApiMs ? inputs.nowMs - inputs.lastSuccessfulApiMs : 0;
   Serial.printf("    lastSuccessfulApiMs=%llu nowMs=%lu delta=%llu timeout=%lu\n",
                 static_cast<unsigned long long>(inputs.lastSuccessfulApiMs),
                 static_cast<unsigned long>(inputs.nowMs),
-                static_cast<unsigned long long>(inputs.nowMs - inputs.lastSuccessfulApiMs),
-                static_cast<unsigned long>(API_TIMEOUT_MS));
+                static_cast<unsigned long long>(apiDelta), static_cast<unsigned long>(API_TIMEOUT_MS));
   Serial.println("    Check API availability, WiFi stability, or disable API watchdog while offline.");
 }
 #endif
