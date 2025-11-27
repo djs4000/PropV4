@@ -194,7 +194,7 @@ void updateInputs() {
     Serial.println(debouncedButtons ? "BUTTONS: both pressed" : "BUTTONS: released");
 #endif
     if (debouncedButtons) {
-      startButtonHold();
+      startButtonHold(now);
     } else {
       const bool holdCompleted = getButtonHoldStartMs() != 0 && (now - getButtonHoldStartMs() >= BUTTON_HOLD_MS);
       if (getState() == ARMING && holdCompleted) {
