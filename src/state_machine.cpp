@@ -1,6 +1,6 @@
 #include "state_machine.h"
 
-#include "core/game_state.h"
+#include "config/config_store.h"
 #include "effects.h"
 #include "game_config.h"
 #include "inputs.h"
@@ -65,9 +65,39 @@ void applyOutputs(const GameOutputs &outputs) {
 FlameState getState() { return game_state::get_state(); }
 
 void setState(FlameState newState) {
-  GameOutputs outputs{};
-  game_state::set_state(newState, &outputs);
-  applyOutputs(outputs);
+  if (newState == currentState) {
+    return;
+  }
+  const FlameState oldState = currentState;
+#ifdef APP_DEBUG
+  Serial.print("STATE: ");
+  Serial.print(flameStateToString(currentState));
+  Serial.print(" -> ");
+  Serial.println(flameStateToString(newState));
+#endif
+  currentState = newState;
+
+  if (oldState == ARMING && newState != ARMING) {
+    resetArmingFlow();
+    stopButtonHold();
+  }
+  // Timer lifecycle hooks based on state transitions.
+  if (newState == ARMED && oldState != ARMED) {
+    bombTimerActive = true;
+    bombTimerDurationMs = config_store::getBombDurationMs();
+    if (bombTimerDurationMs == 0) {
+      bombTimerDurationMs = DEFAULT_BOMB_DURATION_MS;
+    }
+    bombTimerRemainingMs = bombTimerDurationMs;
+    bombTimerLastUpdateMs = millis();
+  } else if (oldState == ARMED && newState != ARMED) {
+    bombTimerActive = false;
+    if (newState != DEFUSED) {
+      bombTimerRemainingMs = 0;
+    }
+  }
+
+  effects::onStateChanged(oldState, newState);
 }
 
 void updateState() {
