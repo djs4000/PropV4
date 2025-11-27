@@ -1,5 +1,6 @@
 #include "state_machine.h"
 
+#include "config/config_store.h"
 #include "effects.h"
 #include "game_config.h"
 #include "inputs.h"
@@ -134,7 +135,7 @@ void setState(FlameState newState) {
   // Timer lifecycle hooks based on state transitions.
   if (newState == ARMED && oldState != ARMED) {
     bombTimerActive = true;
-    bombTimerDurationMs = network::getConfiguredBombDurationMs();
+    bombTimerDurationMs = config_store::getBombDurationMs();
     if (bombTimerDurationMs == 0) {
       bombTimerDurationMs = DEFAULT_BOMB_DURATION_MS;
     }

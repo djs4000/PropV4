@@ -14,12 +14,6 @@ void beginWifi();
 // Non-blocking WiFi state machine. Call this from loop() to advance retries.
 void updateWifi();
 
-// Accessors for currently loaded configuration values.
-const String &getConfiguredWifiSsid();
-const String &getConfiguredApiEndpoint();
-const String &getConfiguredDefuseCode();
-uint32_t getConfiguredBombDurationMs();
-
 bool isWifiConnected();
 bool hasWifiFailedPermanently();  // True only when config portal is not running.
 bool isConfigPortalActive();

@@ -1,31 +1,16 @@
 #include "network.h"
 
+#include "config/config_store.h"
 #include "game_config.h"
 #include "state_machine.h"
 #include "time_sync.h"
 #include "util.h"
-#include "wifi_config.h"
 
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
-#include <Preferences.h>
 #include <WebServer.h>
 
 namespace network {
-
-// Internal state cached for network interactions. Variables are file-local via
-// `static` to avoid exposing them outside this translation unit.
-struct RuntimeConfig {
-  String wifiSsid;
-  String wifiPass;
-  String defuseCode;
-  uint32_t bombDurationMs;
-  String apiEndpoint;
-};
-
-static RuntimeConfig runtimeConfig = {String(DEFAULT_WIFI_SSID), String(DEFAULT_WIFI_PASS),
-                                      String(DEFAULT_DEFUSE_CODE), DEFAULT_BOMB_DURATION_MS,
-                                      String(DEFAULT_API_ENDPOINT)};
 
 enum class ApiRequestState { Idle, InFlight };
 
@@ -48,9 +33,6 @@ static uint8_t wifiRetryCount = 0;
 static uint32_t wifiAttemptStartMs = 0;
 static bool wifiFailedPermanently = false;
 
-static Preferences preferences;
-static bool preferencesInitialized = false;
-
 static WebServer server(80);
 static bool configPortalActive = false;
 static bool configPortalReconnectRequested = false;
@@ -66,45 +48,6 @@ static constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 5000;
 // compiles before definitions later in the file.
 static void handleConfigPortalGet();
 static void handleConfigPortalSave();
-
-static Preferences &getPreferences() {
-  if (!preferencesInitialized) {
-    preferences.begin("digital_flame", false);
-    preferencesInitialized = true;
-  }
-  return preferences;
-}
-
-static void loadRuntimeConfigFromPrefs() {
-  Preferences &prefs = getPreferences();
-  runtimeConfig.wifiSsid = prefs.getString("wifi_ssid", DEFAULT_WIFI_SSID);
-  runtimeConfig.wifiPass = prefs.getString("wifi_pass", DEFAULT_WIFI_PASS);
-  runtimeConfig.defuseCode = prefs.getString("defuse_code", DEFAULT_DEFUSE_CODE);
-  runtimeConfig.apiEndpoint = prefs.getString("api_endpoint", DEFAULT_API_ENDPOINT);
-  runtimeConfig.bombDurationMs = prefs.getUInt("bomb_duration_ms", DEFAULT_BOMB_DURATION_MS);
-
-  if (runtimeConfig.wifiSsid.isEmpty()) {
-    runtimeConfig.wifiSsid = DEFAULT_WIFI_SSID;
-  }
-  if (runtimeConfig.apiEndpoint.isEmpty()) {
-    runtimeConfig.apiEndpoint = DEFAULT_API_ENDPOINT;
-  }
-  if (runtimeConfig.defuseCode.isEmpty()) {
-    runtimeConfig.defuseCode = DEFAULT_DEFUSE_CODE;
-  }
-  if (runtimeConfig.bombDurationMs == 0) {
-    runtimeConfig.bombDurationMs = DEFAULT_BOMB_DURATION_MS;
-  }
-}
-
-static void persistRuntimeConfig() {
-  Preferences &prefs = getPreferences();
-  prefs.putString("wifi_ssid", runtimeConfig.wifiSsid);
-  prefs.putString("wifi_pass", runtimeConfig.wifiPass);
-  prefs.putString("defuse_code", runtimeConfig.defuseCode);
-  prefs.putUInt("bomb_duration_ms", runtimeConfig.bombDurationMs);
-  prefs.putString("api_endpoint", runtimeConfig.apiEndpoint);
-}
 
 static void configureWebServerRoutes() {
   if (webServerRoutesConfigured) {
@@ -130,6 +73,7 @@ static void startWebServerIfNeeded() {
 // Starts a single WiFi attempt without blocking the main loop.
 static void startWifiAttempt() {
   wifiAttemptStartMs = millis();
+  const auto &runtimeConfig = config_store::getRuntimeConfig();
   WiFi.mode(WIFI_STA);
   WiFi.disconnect(true);
   WiFi.begin(runtimeConfig.wifiSsid.c_str(), runtimeConfig.wifiPass.c_str());
@@ -144,6 +88,7 @@ static void startWifiAttempt() {
 }
 
 static void handleConfigPortalGet() {
+  const auto &runtimeConfig = config_store::getRuntimeConfig();
   String page;
   page.reserve(1024);
   page += "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Digital Flame Config</title></head><body>";
@@ -174,13 +119,14 @@ static void handleConfigPortalSave() {
     return;
   }
 
-  runtimeConfig.wifiSsid = ssid;
-  runtimeConfig.wifiPass = pass;
-  runtimeConfig.defuseCode = defuse.isEmpty() ? String(DEFAULT_DEFUSE_CODE) : defuse;
-  runtimeConfig.apiEndpoint = endpoint.isEmpty() ? String(DEFAULT_API_ENDPOINT) : endpoint;
-  runtimeConfig.bombDurationMs = (duration == 0) ? DEFAULT_BOMB_DURATION_MS : duration;
+  config_store::RuntimeConfig updated = config_store::getRuntimeConfig();
+  updated.wifiSsid = ssid;
+  updated.wifiPass = pass;
+  updated.defuseCode = defuse;
+  updated.apiEndpoint = endpoint;
+  updated.bombDurationMs = duration;
 
-  persistRuntimeConfig();
+  config_store::saveRuntimeConfig(updated);
 
   server.send(200, "text/html",
               "<html><body><h3>Settings saved.</h3><p>Device will reconnect using the new settings." \
@@ -189,13 +135,8 @@ static void handleConfigPortalSave() {
   configPortalReconnectRequested = true;
 }
 
-const String &getConfiguredWifiSsid() { return runtimeConfig.wifiSsid; }
-const String &getConfiguredApiEndpoint() { return runtimeConfig.apiEndpoint; }
-const String &getConfiguredDefuseCode() { return runtimeConfig.defuseCode; }
-uint32_t getConfiguredBombDurationMs() { return runtimeConfig.bombDurationMs; }
-
 void beginWifi() {
-  loadRuntimeConfigFromPrefs();
+  config_store::begin();
   wifiRetryCount = 0;
   wifiFailedPermanently = false;
   configPortalActive = false;
@@ -336,6 +277,7 @@ void updateApi() {
   serializeJson(doc, payload);
 
   const ApiMode mode = getApiMode();
+  const auto &runtimeConfig = config_store::getRuntimeConfig();
 
   if (mode == ApiMode::Disabled) {
     // Prevent timeout triggers while intentionally offline.

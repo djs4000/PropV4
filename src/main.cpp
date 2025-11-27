@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <IRremote.hpp>
 
+#include "config/config_store.h"
 #include "effects.h"
 #include "game_config.h"
 #include "inputs.h"
@@ -8,7 +9,6 @@
 #include "state_machine.h"
 #include "ui.h"
 #include "util.h"
-#include "wifi_config.h"
 
 // Cooperative scheduler timestamps
 static uint32_t lastInputsUpdateMs = 0;
@@ -34,9 +34,9 @@ static void renderBootScreenIfNeeded() {
   }
 
   const bool wifiFailed = network::isConfigPortalActive() || network::hasWifiFailedPermanently();
-  ui::renderBootScreen(network::getConfiguredWifiSsid(), network::isWifiConnected(), wifiFailed,
+  ui::renderBootScreen(config_store::getWifiSsid(), network::isWifiConnected(), wifiFailed,
                        network::getConfigPortalSsid(), network::getConfigPortalAddress(),
-                       network::getWifiIpString(), network::getConfiguredApiEndpoint(),
+                       network::getWifiIpString(), config_store::getApiEndpoint(),
                        network::hasReceivedApiResponse());
 }
 
@@ -176,6 +176,8 @@ void setup() {
   }
 #endif
 
+  config_store::begin();
+
   // Initial state on boot
   setState(ON);
 
@@ -185,7 +187,7 @@ void setup() {
   initInputs();
   ui::initUI();
   network::beginWifi();
-  configuredBombDurationMs = network::getConfiguredBombDurationMs();
+  configuredBombDurationMs = config_store::getBombDurationMs();
 }
 
 void loop() {
@@ -215,7 +217,7 @@ void loop() {
     lastUiUpdateMs = now;
 
     // Keep the cached bomb duration aligned with any persisted updates.
-    configuredBombDurationMs = network::getConfiguredBombDurationMs();
+    configuredBombDurationMs = config_store::getBombDurationMs();
 
     renderBootScreenIfNeeded();
 

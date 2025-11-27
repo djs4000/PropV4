@@ -7,9 +7,9 @@
 #include <Wire.h>
 #include <cstring>
 
+#include "config/config_store.h"
 #include "effects.h"
 #include "game_config.h"
-#include "network.h"
 #include "state_machine.h"
 
 namespace {
@@ -117,7 +117,7 @@ void handleDigitPress(char digit) {
   }
 
   if (digitAdded && enteredDigits >= DEFUSE_CODE_LENGTH) {
-    const String &configured = network::getConfiguredDefuseCode();
+    const String &configured = config_store::getDefuseCode();
     const bool matches = configured.length() == DEFUSE_CODE_LENGTH && configured.equals(defuseBuffer);
 
     if (matches) {
