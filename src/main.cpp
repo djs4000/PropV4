@@ -116,6 +116,12 @@ static void handleStateTask(uint32_t) {
     if (network::hasReceivedApiResponse()) {
       setState(READY);
     } else if (network::hasWifiFailedPermanently()) {
+#ifdef APP_DEBUG
+      Serial.println("[ERROR] WiFi retries exhausted without config portal - entering ERROR_STATE.");
+      Serial.print("Configured SSID: ");
+      Serial.println(network::getConfiguredWifiSsid());
+      Serial.println("Ensure WiFi credentials are valid or start the config portal.");
+#endif
       setState(ERROR_STATE);
     }
   }

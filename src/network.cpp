@@ -11,6 +11,13 @@
 #include <Preferences.h>
 #include <WebServer.h>
 
+#if defined(APP_DEBUG) && defined(API_DEBUG_LOGGING)
+// Enable verbose API POST logging when both APP_DEBUG and API_DEBUG_LOGGING are defined.
+#define API_DEBUG_ENABLED 1
+#else
+#define API_DEBUG_ENABLED 0
+#endif
+
 namespace network {
 
 // Internal state cached for network interactions. Variables are file-local via
@@ -353,7 +360,7 @@ void updateApi() {
 
   HTTPClient http;
   if (!http.begin(runtimeConfig.apiEndpoint)) {
-#ifdef APP_DEBUG
+#if API_DEBUG_ENABLED
     Serial.println("HTTP begin failed for API endpoint");
 #endif
     if (mode == ApiMode::TestSendOnly) {
@@ -369,7 +376,7 @@ void updateApi() {
 
   if (mode == ApiMode::TestSendOnly) {
     if (httpCode != HTTP_CODE_OK) {
-#ifdef APP_DEBUG
+#if API_DEBUG_ENABLED
       Serial.print("API POST failed (test mode): ");
       Serial.println(httpCode);
 #endif
@@ -417,7 +424,7 @@ void updateApi() {
         const uint32_t delta = responseNow - lastSuccessfulApiDebugMs;
         const uint32_t intervals = delta / API_POST_INTERVAL_MS;
         if (intervals > 1) {
-#ifdef APP_DEBUG
+#if API_DEBUG_ENABLED
           Serial.printf("[API] Missed approx %lu intervals since last success\n",
                         static_cast<unsigned long>(intervals - 1));
 #endif
@@ -426,7 +433,7 @@ void updateApi() {
 
       lastSuccessfulApiDebugMs = responseNow;
 
-#ifdef APP_DEBUG
+#if API_DEBUG_ENABLED
       Serial.print("API status: ");
       Serial.print(statusStr ? statusStr : "<null>");
       Serial.print(" remaining_ms=");
@@ -434,13 +441,13 @@ void updateApi() {
       Serial.printf("[API] RTT: %lu ms\n", static_cast<unsigned long>(rttMs));
 #endif
     } else {
-#ifdef APP_DEBUG
+#if API_DEBUG_ENABLED
       Serial.print("API JSON parse error: ");
       Serial.println(err.f_str());
 #endif
     }
   } else {
-#ifdef APP_DEBUG
+#if API_DEBUG_ENABLED
     Serial.print("API POST failed: ");
     Serial.println(httpCode);
 #endif
