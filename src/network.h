@@ -35,7 +35,7 @@ bool hasReceivedApiResponse();
 // Allow state/timer injection for payload construction (set by state machine).
 void setOutboundStatus(FlameState state, uint32_t timerMs);
 
-// Periodic API POST handler; must be called from loop() once WiFi is connected.
+// Periodic API POST handler serviced by the networking task.
 void updateApi();
 
 // SoftAP configuration portal used when WiFi station connection fails.
