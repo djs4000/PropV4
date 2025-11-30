@@ -12,8 +12,10 @@
 namespace {
 constexpr uint8_t KEYPAD_ADDR = 0x20;   // PCF8574 for 4x4 keypad
 constexpr uint8_t BUTTON_ADDR = 0x21;   // PCF8574 for dual buttons
-constexpr uint8_t I2C_SDA = 23;
-constexpr uint8_t I2C_SCL = 18;
+constexpr uint8_t I2C_SDA = 18; //blue wire
+constexpr uint8_t I2C_SCL = 23; //white wire
+constexpr uint8_t IR_PIN = 35; //yellow wire
+
 constexpr uint32_t I2C_FREQ = 100000;   // 100kHz per agents.md
 
 constexpr uint32_t KEY_DEBOUNCE_MS = 50;
@@ -93,7 +95,7 @@ char scanKeypadRaw() {
 
 static bool irConfirmationPending = false;
 
-void initIr() { IrReceiver.begin(27, ENABLE_LED_FEEDBACK); }
+void initIr() { IrReceiver.begin(IR_PIN, ENABLE_LED_FEEDBACK); }
 
 void updateIr() {
   if (IrReceiver.decode()) {

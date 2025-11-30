@@ -42,7 +42,7 @@ inline ApiMode getApiMode() { return ApiMode::FullOnline; }
 // LED matrix configuration for the WS2812B strip wrapped as a cylinder. The
 // current build is 9 rows high and 8 columns around with no leading pixels
 // before the matrix.
-constexpr uint8_t LED_MATRIX_ROWS = 9;    // height
+constexpr uint8_t LED_MATRIX_ROWS = 14;    // height
 constexpr uint8_t LED_MATRIX_COLS = 8;    // circumference columns
 constexpr uint16_t LED_COUNT = LED_MATRIX_ROWS * LED_MATRIX_COLS;
 

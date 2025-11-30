@@ -7,8 +7,8 @@
 #include "state_machine.h"
 
 namespace {
-constexpr uint8_t LED_PIN = 19;
-constexpr uint8_t LED_BRIGHTNESS = 80;
+constexpr uint8_t LED_PIN = 19; //green wire
+constexpr uint8_t LED_BRIGHTNESS = 150;
 constexpr uint8_t AMP_ENABLE_PIN = 4;  // LOW = enable
 constexpr uint8_t AUDIO_PIN = 26;       // DAC output
 constexpr uint8_t AUDIO_CHANNEL = 0;
