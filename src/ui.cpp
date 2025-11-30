@@ -24,8 +24,11 @@ constexpr int16_t BAR_BORDER = 2;
 constexpr int16_t CODE_Y = 260;
 
 TFT_eSPI tft = TFT_eSPI();
+TFT_eSprite timerSprite = TFT_eSprite(&tft);
+TFT_eSprite statusSprite = TFT_eSprite(&tft);
 UiThemeConfig activeTheme{};
 bool screenInitialized = false;
+bool spritesInitialized = false;
 
 enum class ScreenMode {
   Boot,
@@ -99,6 +102,17 @@ void ensureDisplayReady() {
   screenInitialized = true;
 }
 
+void ensureSpritesReady() {
+  if (spritesInitialized || !screenInitialized) {
+    return;
+  }
+
+  timerSprite.createSprite(tft.width(), TIMER_CLEAR_HEIGHT);
+  statusSprite.createSprite(tft.width(), STATUS_CLEAR_HEIGHT);
+
+  spritesInitialized = true;
+}
+
 void applyTheme(const UiThemeConfig &theme) {
   activeTheme = theme;
   tft.setTextColor(activeTheme.foregroundColor, activeTheme.backgroundColor);
@@ -131,6 +145,14 @@ void markAllLayoutsDirty() {
 }
 
 int16_t barX() { return (tft.width() - BAR_WIDTH) / 2; }
+
+int16_t timerSpriteX() { return 0; }
+
+int16_t timerSpriteY() { return TIMER_Y - (TIMER_CLEAR_HEIGHT / 2); }
+
+int16_t statusSpriteX() { return 0; }
+
+int16_t statusSpriteY() { return STATUS_Y - (STATUS_CLEAR_HEIGHT / 2); }
 
 void drawBootLayout() {
   if (bootCache.layoutDrawn) {
@@ -180,6 +202,30 @@ void drawCenteredText(const String &text, int16_t y, uint8_t textSize, int16_t c
   const int16_t clearY = y - clearHeight / 2;
   tft.fillRect(0, clearY, tft.width(), clearHeight, activeTheme.backgroundColor);
   tft.drawString(text, tft.width() / 2, y);
+  tft.setTextColor(activeTheme.foregroundColor, activeTheme.backgroundColor);
+}
+
+void drawTimerText(const String &text, uint16_t color) {
+  ensureSpritesReady();
+
+  timerSprite.fillSprite(activeTheme.backgroundColor);
+  timerSprite.setTextDatum(TC_DATUM);
+  timerSprite.setTextSize(TIMER_TEXT_SIZE);
+  timerSprite.setTextColor(color, activeTheme.backgroundColor);
+  timerSprite.drawString(text, timerSprite.width() / 2, TIMER_Y - timerSpriteY());
+  timerSprite.pushSprite(timerSpriteX(), timerSpriteY());
+  tft.setTextColor(activeTheme.foregroundColor, activeTheme.backgroundColor);
+}
+
+void drawStatusText(const String &text, uint16_t color) {
+  ensureSpritesReady();
+
+  statusSprite.fillSprite(activeTheme.backgroundColor);
+  statusSprite.setTextDatum(TC_DATUM);
+  statusSprite.setTextSize(STATUS_TEXT_SIZE);
+  statusSprite.setTextColor(color, activeTheme.backgroundColor);
+  statusSprite.drawString(text, statusSprite.width() / 2, STATUS_Y - statusSpriteY());
+  statusSprite.pushSprite(statusSpriteX(), statusSpriteY());
   tft.setTextColor(activeTheme.foregroundColor, activeTheme.backgroundColor);
 }
 
@@ -312,7 +358,7 @@ void renderMainUi(const UiModel &model) {
   }
   const String timerString = String(timerBuffer);
   if (timerString != mainCache.timerText || timerColor != mainCache.timerColor) {
-    drawCenteredText(timerString, TIMER_Y, TIMER_TEXT_SIZE, TIMER_CLEAR_HEIGHT, timerColor);
+    drawTimerText(timerString, timerColor);
     mainCache.timerText = timerString;
     mainCache.timerColor = timerColor;
   }
@@ -328,7 +374,7 @@ void renderMainUi(const UiModel &model) {
   }
   if (statusText != mainCache.statusText || statusColor != mainCache.statusColor ||
       mainCache.showArmingPrompt != model.showArmingPrompt) {
-    drawCenteredText(statusText, STATUS_Y, STATUS_TEXT_SIZE, STATUS_CLEAR_HEIGHT, statusColor);
+    drawStatusText(statusText, statusColor);
     mainCache.statusText = statusText;
     mainCache.statusColor = statusColor;
     mainCache.showArmingPrompt = model.showArmingPrompt;
@@ -422,10 +468,14 @@ void renderMainUi(const UiModel &model) {
 namespace ui {
 UiThemeConfig defaultTheme() { return defaultThemeInternal(); }
 
-void initUI() { ensureDisplayReady(); }
+void initUI() {
+  ensureDisplayReady();
+  ensureSpritesReady();
+}
 
 void render(const UiModel &model) {
   ensureDisplayReady();
+  ensureSpritesReady();
 
   const ScreenMode currentScreen = model.showConfigPortal
                                        ? ScreenMode::Config
