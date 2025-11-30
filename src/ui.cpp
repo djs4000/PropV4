@@ -98,7 +98,7 @@ void ensureDisplayReady() {
   digitalWrite(BACKLIGHT_PIN, HIGH);
 
   tft.init();
-  tft.setRotation(0);
+  tft.setRotation(2);
   screenInitialized = true;
 }
 
