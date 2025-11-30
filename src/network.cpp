@@ -359,6 +359,8 @@ void updateApi() {
   } else {
     doc["timer"] = DEFAULT_BOMB_DURATION_MS;
   }
+  // Send monotonic uptime so the Server can calculate skew
+  doc["uptime_ms"] = payloadNowMs;
   doc["timestamp"] = timestampEpochMs;
 
   String payload;
