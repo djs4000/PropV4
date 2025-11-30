@@ -416,6 +416,8 @@ The code must read the runtime values (defuse code, bomb duration) from Preferen
   - Not block on network or audio operations.
   - Coordinate with the state machine via thread-safe mechanisms.
 
+**Concurrency exception:** API networking POSTs run in a dedicated FreeRTOS task pinned to Core 0 so that blocking `HTTPClient` calls never stall the UI/effects loop on Core 1. All other modules (inputs, state machine, UI, effects, config portal) remain on the cooperative single-loop scheduler. No additional tasks are allowed without explicit instruction.
+
 In short: prefer cooperative, non-blocking scheduling in a single loop.
 
 ---

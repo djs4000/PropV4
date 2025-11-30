@@ -10,6 +10,8 @@
 #include <HTTPClient.h>
 #include <Preferences.h>
 #include <WebServer.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #if defined(APP_DEBUG) && defined(API_DEBUG_LOGGING)
 // Enable verbose API POST logging when both APP_DEBUG and API_DEBUG_LOGGING are defined.
@@ -36,13 +38,13 @@ static RuntimeConfig runtimeConfig = {String(DEFAULT_WIFI_SSID), String(DEFAULT_
 
 enum class ApiRequestState { Idle, InFlight };
 
-static uint64_t lastSuccessfulApiMs = 0;
+static uint32_t lastSuccessfulApiMs = 0;
 static MatchStatus remoteStatus = WaitingOnStart;
 static FlameState outboundState = ON;
 static uint32_t outboundTimerMs = DEFAULT_BOMB_DURATION_MS;
 static uint32_t baseRemainingTimeMs = 0;
-static uint64_t baseRemainingTimestampMs = 0;
-static uint64_t lastApiResponseMs = 0;
+static uint32_t baseRemainingTimestampMs = 0;
+static uint32_t lastApiResponseMs = 0;
 static bool apiResponseReceived = false;
 static uint32_t lastApiRequestStartMs = 0;
 static uint32_t lastSuccessfulApiDebugMs = 0;
@@ -50,6 +52,7 @@ static uint32_t lastSuccessfulApiDebugMs = 0;
 // Tracks the last POST attempt to maintain the configured cadence.
 static uint32_t lastApiPostMs = 0;
 static ApiRequestState apiRequestState = ApiRequestState::Idle;
+static TaskHandle_t apiTaskHandle = nullptr;
 
 static uint8_t wifiRetryCount = 0;
 static uint32_t wifiAttemptStartMs = 0;
@@ -73,6 +76,16 @@ static constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 5000;
 // compiles before definitions later in the file.
 static void handleConfigPortalGet();
 static void handleConfigPortalSave();
+
+static void apiTaskEntry(void *pvParameters) {
+  (void)pvParameters;
+  // Dedicated networking loop pinned to Core 0 to keep blocking HTTP calls off the main UI/effects core.
+  const TickType_t delayTicks = pdMS_TO_TICKS(10);
+  for (;;) {
+    updateApi();
+    vTaskDelay(delayTicks);
+  }
+}
 
 static Preferences &getPreferences() {
   if (!preferencesInitialized) {
@@ -211,6 +224,11 @@ void beginWifi() {
   webServerRoutesConfigured = false;
   lastSuccessfulApiMs = millis();  // Prevent false timeouts before first API call.
   startWifiAttempt();
+
+  // Start API networking task on Core 0 if not already running.
+  if (apiTaskHandle == nullptr) {
+    xTaskCreatePinnedToCore(apiTaskEntry, "ApiTask", 8192, nullptr, 1, &apiTaskHandle, 0);
+  }
 }
 
 void updateWifi() {
@@ -288,8 +306,8 @@ uint32_t getRemoteRemainingTimeMs() {
     return 0;
   }
 
-  const uint64_t now = millis();
-  const uint64_t elapsed = now - baseRemainingTimestampMs;
+  const uint32_t now = millis();
+  const uint32_t elapsed = now - baseRemainingTimestampMs;
   if (elapsed >= baseRemainingTimeMs) {
     return 0;
   }
