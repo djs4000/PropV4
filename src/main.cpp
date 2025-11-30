@@ -142,12 +142,6 @@ static void handleUiTask(uint32_t) {
 
 static void handleConfigPortalTask(uint32_t now) { network::updateConfigPortal(now, getState()); }
 
-static void handleApiTask(uint32_t) {
-  if (network::isWifiConnected()) {
-    network::updateApi();
-  }
-}
-
 void setup() {
 #ifdef APP_DEBUG
   Serial.begin(115200);
@@ -172,7 +166,6 @@ void setup() {
   scheduler::addTask(handleEffectsTask, 42);
   scheduler::addTask(handleUiTask, 42);
   scheduler::addTask(handleConfigPortalTask, 200);
-  scheduler::addTask(handleApiTask, API_POST_INTERVAL_MS);
 }
 
 void loop() { scheduler::run(); }
