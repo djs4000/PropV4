@@ -22,10 +22,17 @@ constexpr uint32_t KEY_DEBOUNCE_MS = 50;
 constexpr uint32_t BUTTON_DEBOUNCE_MS = 30;
 
 // Key map matches a standard 4x4 matrix; only numeric keys are acted upon.
-constexpr char KEY_MAP[4][4] = {{'1', '2', '3', 'A'},
-                                {'4', '5', '6', 'B'},
-                                {'7', '8', '9', 'C'},
-                                {'*', '0', '#', 'D'}};
+//constexpr char KEY_MAP[4][4] = {{'1', '2', '3', 'A'},
+//                                {'4', '5', '6', 'B'},
+//                                {'7', '8', '9', 'C'},
+//                                {'*', '0', '#', 'D'}};
+//
+//Rotated to match wiring
+constexpr char KEY_MAP[4][4] = {{'1', '4', '7', '*'},
+                                {'2', '5', '8', '0'},
+                                {'3', '6', '9', '#'},
+                                {'A', 'B', 'C', 'D'}};
+
 
 bool lastButtonsRaw = false;
 bool debouncedButtons = false;
@@ -117,6 +124,11 @@ bool consumeIrConfirmation() {
 
 void clearIrConfirmation() { irConfirmationPending = false; }
 
+void consumeKeypadDigit() {
+  debouncedKey = '\0';
+  lastKeyRaw = '\0';
+}
+
 void initInputs() {
   Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ);
 
@@ -172,10 +184,6 @@ InputSnapshot updateInputs() {
 
   if (lastSnapshot.irConfirmationReceived) {
     irConfirmationPending = false;
-  }
-  if (lastSnapshot.keypadDigitAvailable) {
-    debouncedKey = '\0';
-    lastKeyRaw = '\0';
   }
 
   return lastSnapshot;
