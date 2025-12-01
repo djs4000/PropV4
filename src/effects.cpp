@@ -7,13 +7,6 @@
 #include "state_machine.h"
 
 namespace {
-constexpr uint8_t LED_PIN = 19; //green wire
-constexpr uint8_t LED_BRIGHTNESS = 150;
-constexpr uint8_t AMP_ENABLE_PIN = 4;  // LOW = enable
-constexpr uint8_t AUDIO_PIN = 26;       // DAC output
-constexpr uint8_t AUDIO_CHANNEL = 0;
-constexpr uint8_t AUDIO_RES_BITS = 8;
-
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 float armingProgress01 = 0.0f;
@@ -27,13 +20,6 @@ uint32_t detonatedStartMs = 0;
 bool detonatedActive = false;
 
 uint32_t lastArmedBeepMs = 0;
-
-// Keep the countdown beep level consistent with the confirmation chirp that
-// plays when ARMED becomes active so operators can hear the last-10s alert.
-constexpr uint16_t COUNTDOWN_BEEP_DURATION_MS = 75;
-constexpr uint8_t COUNTDOWN_BEEP_VOLUME = 255;
-constexpr uint16_t IR_CONFIRM_PROMPT_BEEP_MS = 120;
-constexpr uint16_t IR_CONFIRM_PROMPT_BEEP_FREQ = 1500;
 
 struct ToneState {
   bool active = false;
@@ -61,13 +47,6 @@ struct ChimeState {
   uint32_t nextBeepMs = 0;
 };
 ChimeState defusedChime;
-
-// Wrong-code beep cadence: two low 90 Hz growls separated by a short pause.
-// Expose the aggregate so keypad handling can lock out entries while the alert
-// plays.
-constexpr uint16_t WRONG_CODE_TONE_MS = 220;
-constexpr uint16_t WRONG_CODE_TONE_FREQ_HZ = 90;
-constexpr uint16_t WRONG_CODE_GAP_MS = 140;
 
 uint32_t colorToPixel(const RgbColor &c, float scale = 1.0f) {
   scale = constrain(scale, 0.0f, 1.0f);
