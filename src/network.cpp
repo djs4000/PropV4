@@ -358,6 +358,7 @@ void updateApi() {
     doc["timer"] = DEFAULT_BOMB_DURATION_MS;
   }
   doc["timestamp"] = timestampEpochMs;
+  doc["uptime_ms"] = payloadNowMs;
 
   String payload;
   serializeJson(doc, payload);
