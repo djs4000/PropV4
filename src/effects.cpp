@@ -55,6 +55,13 @@ struct DoubleBeepState {
 
 DoubleBeepState wrongCodeBeep;
 
+struct ChimeState {
+  bool active = false;
+  uint8_t step = 0;
+  uint32_t nextBeepMs = 0;
+};
+ChimeState defusedChime;
+
 // Wrong-code beep cadence: two low 90 Hz growls separated by a short pause.
 // Expose the aggregate so keypad handling can lock out entries while the alert
 // plays.
@@ -273,6 +280,40 @@ void handleWrongCodeBeep(uint32_t now) {
   wrongCodeBeep.active = false;
   wrongCodeBeep.step = 0;
 }
+
+void handleDefusedChime(uint32_t now) {
+  if (!defusedChime.active) {
+    return;
+  }
+
+  if (toneState.active && now < toneState.endMs) {
+    return;
+  }
+
+  if (now < defusedChime.nextBeepMs) {
+    return;
+  }
+
+  switch (defusedChime.step) {
+    case 2:
+      // Play the second note of the chime
+      effects::playBeep(2000, 100, 255);
+      defusedChime.step = 3;
+      defusedChime.nextBeepMs = toneState.endMs + 50;
+      break;
+    case 3:
+      // Play the final, higher note
+      effects::playBeep(2500, 250, 255);
+      defusedChime.step = 4;
+      defusedChime.nextBeepMs = toneState.endMs;
+      break;
+    case 4:
+      // Chime is finished
+      defusedChime.active = false;
+      defusedChime.step = 0;
+      break;
+  }
+}
 }  // namespace
 
 namespace effects {
@@ -293,6 +334,7 @@ void init() {
 void update(uint32_t now) {
   updateTone();
   handleWrongCodeBeep(now);
+  handleDefusedChime(now);
   handleArmedBeeps(now, getState());
 
   if (now - lastFrameMs < EFFECTS_FRAME_INTERVAL_MS) {
@@ -351,7 +393,12 @@ void onStateChanged(FlameState oldState, FlameState newState) {
   if (newState == DEFUSED) {
     defusedActive = true;
     defusedStartMs = millis();
-    playBeep(1600, 220);
+    // Start the triumphant defuse chime
+    defusedChime.active = true;
+    defusedChime.step = 1;
+    playBeep(1500, 100, 255); // First note
+    defusedChime.nextBeepMs = toneState.endMs + 50;
+    defusedChime.step = 2;
   } else if (newState == DETONATED) {
     detonatedActive = true;
     detonatedStartMs = millis();
