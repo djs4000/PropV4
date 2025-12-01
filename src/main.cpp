@@ -110,6 +110,11 @@ static void handleStateTask(uint32_t) {
   lastGameOutputs = GameOutputs{};
   updateState(lastInputSnapshot, lastGameOutputs);
 
+  if (lastInputSnapshot.keypadDigitAvailable) {
+    lastInputSnapshot.keypadDigitAvailable = false;
+    lastInputSnapshot.keypadDigit = '\0';
+  }
+
   if (getState() == ON) {
     if (network::hasReceivedApiResponse()) {
       setState(READY);

@@ -15,7 +15,7 @@ constexpr uint32_t IR_CONFIRM_WINDOW_MS = 5000;      // 5s IR confirmation windo
 constexpr uint8_t DEFUSE_CODE_LENGTH = 4;            // digits
 constexpr uint8_t MAX_WIFI_RETRIES = 10;             // WiFi attempts
 
-constexpr uint32_t DEFAULT_BOMB_DURATION_MS = 40000; // example: 40s
+constexpr uint32_t DEFAULT_BOMB_DURATION_MS = 12000; // example: 40s
 
 // Placeholder default defuse code used until Preferences or web UI override it.
 static constexpr const char *DEFAULT_DEFUSE_CODE = "1234";
@@ -53,24 +53,26 @@ struct RgbColor {
 };
 
 // Tunable colors per flame state.
-constexpr RgbColor COLOR_READY = {200, 150, 40};       // soft yellow
-constexpr RgbColor COLOR_ACTIVE = {30, 200, 60};       // green
-constexpr RgbColor COLOR_ARMING = {255, 180, 40};      // orange/yellow
-constexpr RgbColor COLOR_ARMED = {220, 40, 20};        // red
+constexpr RgbColor COLOR_READY = {255, 255, 0};        // yellow
+constexpr RgbColor COLOR_ACTIVE = {0, 255, 0};       // green
+constexpr RgbColor COLOR_ARMING = {255, 77, 0};      // orange/yellow
+constexpr RgbColor COLOR_ARMED = {255, 0, 0};        // red
 constexpr RgbColor COLOR_DEFUSED = {30, 120, 255};     // blue
 constexpr RgbColor COLOR_DETONATED = {255, 0, 0};      // bright red
-constexpr RgbColor COLOR_ERROR = {200, 0, 0};          // solid red
+constexpr RgbColor COLOR_ERROR = {75, 0, 130};          // solid red
 constexpr RgbColor COLOR_BOOT = {255, 255, 255};        // bright white for boot flash
 
 // Timing controls for LED/audio effects.
-constexpr uint32_t EFFECTS_FRAME_INTERVAL_MS = 30;       // base frame cadence
+constexpr uint32_t EFFECTS_FRAME_INTERVAL_MS = 50;       // base frame cadence
 constexpr uint32_t COUNTDOWN_BEEP_INTERVAL_MS = 1000;      // 1s beeps (slow cadence)
 constexpr uint32_t COUNTDOWN_BEEP_START_THRESHOLD_MS = 11000; // begin slow beeps when remaining is under this
 constexpr uint32_t COUNTDOWN_BEEP_FAST_INTERVAL_MS = 500;  // faster cadence near zero
-constexpr uint32_t COUNTDOWN_BEEP_FAST_THRESHOLD_MS = 6000; // switch to fast cadence when remaining is below this
+constexpr uint32_t COUNTDOWN_BEEP_FAST_THRESHOLD_MS = 5500; // switch to fast cadence when remaining is below this
+constexpr uint32_t COUNTDOWN_BEEP_FASTEST_INTERVAL_MS = 250;
+constexpr uint32_t COUNTDOWN_BEEP_FASTEST_THRESHOLD_MS = 3250;
 #ifdef APP_DEBUG
-constexpr uint32_t DETONATED_EFFECT_DURATION_MS = 500;
-constexpr uint32_t DEFUSED_EFFECT_DURATION_MS = 500;
+constexpr uint32_t DETONATED_EFFECT_DURATION_MS = 5000;
+constexpr uint32_t DEFUSED_EFFECT_DURATION_MS = 5000;
 #else
 constexpr uint32_t DETONATED_EFFECT_DURATION_MS = 10000;
 constexpr uint32_t DEFUSED_EFFECT_DURATION_MS = 5000;

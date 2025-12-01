@@ -24,6 +24,7 @@ bool armingHoldComplete = false;
 uint32_t irWindowStartMs = 0;
 bool irWindowActive = false;
 bool pendingClearIrConfirmation = false;
+bool clearDefuseAfterLock = false;
 
 char defuseBuffer[DEFUSE_CODE_LENGTH + 1] = {0};
 uint8_t defuseEnteredDigits = 0;
@@ -76,6 +77,7 @@ void resetArmingFlow(GameOutputs &outputs) {
 void resetDefuseBuffer() {
   std::memset(defuseBuffer, 0, sizeof(defuseBuffer));
   defuseEnteredDigits = 0;
+  clearDefuseAfterLock = false;
 }
 
 void stopButtonHoldInternal(GameOutputs &outputs) {
@@ -225,8 +227,15 @@ void handleDefuseInput(const GameInputs &inputs, GameOutputs &outputs) {
     return;
   }
 
-  if (inputs.nowMs < keypadLockedUntilMs) {
-    return;
+  if (keypadLockedUntilMs != 0) {
+    if (inputs.nowMs >= keypadLockedUntilMs) {
+      keypadLockedUntilMs = 0;
+      if (clearDefuseAfterLock) {
+        resetDefuseBuffer();
+      }
+    } else {
+      return;
+    }
   }
 
   if (!inputs.keypadDigitAvailable || inputs.keypadDigit < '0' || inputs.keypadDigit > '9') {
@@ -247,8 +256,8 @@ void handleDefuseInput(const GameInputs &inputs, GameOutputs &outputs) {
     } else {
       outputs.wrongCodeEffect = true;
       keypadLockedUntilMs = inputs.nowMs + effects::getWrongCodeBeepDurationMs();
+      clearDefuseAfterLock = true;
     }
-    resetDefuseBuffer();
   }
 }
 }  // namespace
