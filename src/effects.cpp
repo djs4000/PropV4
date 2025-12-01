@@ -30,8 +30,8 @@ uint32_t lastArmedBeepMs = 0;
 
 // Keep the countdown beep level consistent with the confirmation chirp that
 // plays when ARMED becomes active so operators can hear the last-10s alert.
-constexpr uint16_t COUNTDOWN_BEEP_DURATION_MS = 150;
-constexpr uint8_t COUNTDOWN_BEEP_VOLUME = 200;
+constexpr uint16_t COUNTDOWN_BEEP_DURATION_MS = 75;
+constexpr uint8_t COUNTDOWN_BEEP_VOLUME = 255;
 constexpr uint16_t IR_CONFIRM_PROMPT_BEEP_MS = 120;
 constexpr uint16_t IR_CONFIRM_PROMPT_BEEP_FREQ = 1500;
 
@@ -108,7 +108,7 @@ void updateTone() {
   if (nowMs >= toneState.endMs) {
     ledcWriteTone(AUDIO_CHANNEL, 0);
     ledcWrite(AUDIO_CHANNEL, 0);
-    digitalWrite(AMP_ENABLE_PIN, HIGH);
+    //digitalWrite(AMP_ENABLE_PIN, HIGH);
     toneState.active = false;
     return;
   }
@@ -224,7 +224,9 @@ void handleArmedBeeps(uint32_t now, FlameState state) {
   }
 
   uint32_t interval = 0;
-  if (remaining <= COUNTDOWN_BEEP_FAST_THRESHOLD_MS) {
+  if (remaining <= COUNTDOWN_BEEP_FASTEST_THRESHOLD_MS) {
+    interval = COUNTDOWN_BEEP_FASTEST_INTERVAL_MS;
+  } else if (remaining <= COUNTDOWN_BEEP_FAST_THRESHOLD_MS) {
     interval = COUNTDOWN_BEEP_FAST_INTERVAL_MS;
   } else if (remaining <= COUNTDOWN_BEEP_START_THRESHOLD_MS) {
     interval = COUNTDOWN_BEEP_INTERVAL_MS;
@@ -281,7 +283,7 @@ void init() {
   strip.show();
 
   pinMode(AMP_ENABLE_PIN, OUTPUT);
-  digitalWrite(AMP_ENABLE_PIN, HIGH);
+  digitalWrite(AMP_ENABLE_PIN, LOW);
   ledcSetup(AUDIO_CHANNEL, 1000, AUDIO_RES_BITS);
   ledcAttachPin(AUDIO_PIN, AUDIO_CHANNEL);
   ledcWriteTone(AUDIO_CHANNEL, 0);
@@ -397,12 +399,12 @@ void playBeep(uint16_t frequencyHz, uint16_t durationMs, uint8_t volume, bool sa
   if (sawtooth) {
     ledcWriteTone(AUDIO_CHANNEL, toneState.frequency);
     ledcWrite(AUDIO_CHANNEL, 0);
-    digitalWrite(AMP_ENABLE_PIN, LOW);
+    //digitalWrite(AMP_ENABLE_PIN, LOW);
     return;
   }
 
   ledcWriteTone(AUDIO_CHANNEL, toneState.frequency);
   ledcWrite(AUDIO_CHANNEL, toneState.volume);
-  digitalWrite(AMP_ENABLE_PIN, LOW);
+  //digitalWrite(AMP_ENABLE_PIN, LOW);
 }
 }  // namespace effects
