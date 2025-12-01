@@ -87,9 +87,11 @@ uint16_t mapRowColToIndex(uint8_t row, uint8_t col) {
   // than a simple serpentine assumption. Each column uses the measured bottom
   // and top indices and interpolates linearly through the remaining rows to
   // approximate the zigzag wiring while keeping a bottom->top fill order.
-  static const uint16_t bottomRowIndices[LED_MATRIX_COLS] = {8, 9, 26, 27, 44, 45, 62, 63};
-  static const uint16_t topRowIndices[LED_MATRIX_COLS] = {0, 17, 18, 35, 36, 56, 54, 71};
-
+  // Updated for 14 rows (Indices 0-111)
+  // Zig-Zag pattern: Col 0 goes 0->13, Col 1 goes 14->27, etc.
+  static const uint16_t bottomRowIndices[LED_MATRIX_COLS] = {13, 14, 41, 42, 69, 70, 97, 98};
+  static const uint16_t topRowIndices[LED_MATRIX_COLS]    = {0, 27, 28, 55, 56, 83, 84, 111};
+  
   const float step = static_cast<float>(topRowIndices[col] - bottomRowIndices[col]) /
                      static_cast<float>(LED_MATRIX_ROWS - 1);
   const uint16_t mapped = static_cast<uint16_t>(lroundf(bottomRowIndices[col] + step * row));
