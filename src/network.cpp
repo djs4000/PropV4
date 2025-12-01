@@ -13,6 +13,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+
 #if defined(APP_DEBUG) && defined(API_DEBUG_LOGGING)
 // Enable verbose API POST logging when both APP_DEBUG and API_DEBUG_LOGGING are defined.
 #define API_DEBUG_ENABLED 1
