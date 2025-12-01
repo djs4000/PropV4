@@ -148,6 +148,7 @@ Buttons behave as:
 {
   "state": "Ready",         // enum → string mapping: "On", "Ready", "Active", "Arming", "Armed", "Defused", "Detonated", "Error"
   "timer": 40000,           // milliseconds remaining (only active / meaningful in ARMED)
+  "uptime_ms": 123456,     // monotonic millis for skew calculation
   "timestamp": 638981335320045200  // int64 ticks
 }
 ```
@@ -178,6 +179,7 @@ Allowed `state` values in JSON:
 - If `millis() - lastSuccessfulApiMs >= API_TIMEOUT_MS` (default 10000 ms) while WiFi is connected, apply the global timeout rule (see State Machine).
 - While `ACTIVE`, missed calls should also display a small network error banner at the bottom of the UI but allow play to continue on an internal clock.
 - WiFi must reconnect automatically.
+- The prop must send `uptime_ms` (millis) in every packet to allow the server to calculate clock skew.
 
 ---
 
