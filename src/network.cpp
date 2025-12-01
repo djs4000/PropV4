@@ -281,10 +281,14 @@ String getConfigPortalPassword() { return String(SOFTAP_PASSWORD); }
 
 String getConfigPortalAddress() {
   if (configPortalActive) {
-    return String("http://") + WiFi.softAPIP().toString();
+    char address[32] = {0};
+    snprintf(address, sizeof(address), "http://%s", WiFi.softAPIP().toString().c_str());
+    return String(address);
   }
   if (isWifiConnected()) {
-    return String("http://") + WiFi.localIP().toString();
+    char address[32] = {0};
+    snprintf(address, sizeof(address), "http://%s", WiFi.localIP().toString().c_str());
+    return String(address);
   }
   // Default SoftAP IP for user guidance when the portal is starting up.
   return String("http://192.168.4.1");

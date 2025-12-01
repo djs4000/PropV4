@@ -160,7 +160,7 @@ void setup() {
   network::beginWifi();
   configuredBombDurationMs = network::getConfiguredBombDurationMs();
 
-  scheduler::addTask([](uint32_t) { lastInputSnapshot = updateInputs(); }, 5);
+  scheduler::addTask([](uint32_t) { lastInputSnapshot = updateInputs(); }, 30);
   scheduler::addTask([](uint32_t) { network::updateWifi(); }, 200);
   scheduler::addTask(handleStateTask, 10);
   scheduler::addTask(handleEffectsTask, 42);
