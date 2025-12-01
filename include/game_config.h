@@ -82,7 +82,7 @@ inline ApiMode getApiMode() { return ApiMode::FullOnline; }
 constexpr uint8_t LED_MATRIX_ROWS = 14;     // Height of the LED matrix
 constexpr uint8_t LED_MATRIX_COLS = 8;      // Circumference columns of the LED matrix
 constexpr uint16_t LED_COUNT = LED_MATRIX_ROWS * LED_MATRIX_COLS;
-constexpr uint8_t LED_BRIGHTNESS = 150;     // LED brightness (0-255)
+constexpr uint8_t LED_BRIGHTNESS = 250;     // LED brightness (0-255)
 
 struct RgbColor {
   uint8_t r;
