@@ -9,6 +9,7 @@ namespace {
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite timerSprite = TFT_eSprite(&tft);
 TFT_eSprite statusSprite = TFT_eSprite(&tft);
+TFT_eSprite armingBarSprite = TFT_eSprite(&tft);
 UiThemeConfig activeTheme{};
 bool screenInitialized = false;
 bool spritesInitialized = false;
@@ -92,6 +93,7 @@ void ensureSpritesReady() {
 
   timerSprite.createSprite(tft.width(), TIMER_CLEAR_HEIGHT);
   statusSprite.createSprite(tft.width(), STATUS_CLEAR_HEIGHT);
+  armingBarSprite.createSprite(BAR_WIDTH, BAR_HEIGHT);
 
   spritesInitialized = true;
 }
@@ -138,6 +140,10 @@ int16_t statusSpriteX() { return 0; }
 int16_t statusSpriteY() { return STATUS_Y - (STATUS_CLEAR_HEIGHT / 2); }
 
 void drawBootLayout() {
+  // Invalidate main UI cache when switching to boot screen
+  mainCache.layoutDrawn = false;
+  mainCache.armingProgress = -1.0f;
+
   if (bootCache.layoutDrawn) {
     return;
   }
@@ -384,15 +390,22 @@ void renderMainUi(const UiModel &model) {
     }
   }
   if (clampedProgress != mainCache.armingProgress || armingColor != mainCache.armingColor || !mainCache.layoutDrawn) {
+    ensureSpritesReady();
+
+    // Draw the bar border on the main TFT object if the layout is dirty
+    if (!mainCache.layoutDrawn) {
+      for (int i = 0; i < BAR_BORDER; ++i) {
+        tft.drawRect(barX() + i, BAR_Y + i, BAR_WIDTH - 2 * i, BAR_HEIGHT - 2 * i, activeTheme.foregroundColor);
+      }
+    }
+
+    armingBarSprite.fillSprite(activeTheme.backgroundColor);
     const int16_t innerWidth = BAR_WIDTH - 2 * BAR_BORDER;
     const int16_t fillWidth = static_cast<int16_t>(innerWidth * clampedProgress);
-    const int16_t fillY = BAR_Y + BAR_BORDER;
-    const int16_t fillHeight = BAR_HEIGHT - 2 * BAR_BORDER;
-    const int16_t fillX = barX() + BAR_BORDER;
-    tft.fillRect(fillX, fillY, innerWidth, fillHeight, activeTheme.backgroundColor);
     if (fillWidth > 0) {
-      tft.fillRect(fillX, fillY, fillWidth, fillHeight, armingColor);
+      armingBarSprite.fillRect(BAR_BORDER, BAR_BORDER, fillWidth, BAR_HEIGHT - 2 * BAR_BORDER, armingColor);
     }
+    armingBarSprite.pushSprite(barX(), BAR_Y);
     mainCache.armingProgress = clampedProgress;
     mainCache.armingColor = armingColor;
   }

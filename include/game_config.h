@@ -37,7 +37,7 @@ constexpr uint32_t API_POST_INTERVAL_MS = 500;       // 5s for testing
 constexpr uint32_t API_POST_INTERVAL_MS = 500;       // 500ms for live
 #endif
 constexpr uint32_t API_TIMEOUT_MS = 10000;            // 10s before API is considered offline
-constexpr uint32_t BUTTON_HOLD_MS = 3000;             // 3s hold for arming/reset
+constexpr uint32_t BUTTON_HOLD_MS = 10000;             // 3s hold for arming/reset
 constexpr uint32_t IR_CONFIRM_WINDOW_MS = 5000;       // 5s window to receive IR confirmation
 constexpr uint8_t DEFUSE_CODE_LENGTH = 4;             // Number of digits in the defuse code
 constexpr uint8_t MAX_WIFI_RETRIES = 10;              // WiFi connection attempts before failing
