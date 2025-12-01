@@ -3,27 +3,9 @@
 #include <TFT_eSPI.h>
 #include <algorithm>
 #include <cstring>
+#include "game_config.h"
 
 namespace {
-constexpr uint32_t FRAME_INTERVAL_MS = 1000 / 24;  // target ~24 FPS
-constexpr uint8_t BACKLIGHT_PIN = 21;
-constexpr uint8_t TITLE_TEXT_SIZE = 2;
-constexpr uint8_t TIMER_TEXT_SIZE = 5;
-constexpr int16_t TIMER_CLEAR_HEIGHT = 72;
-constexpr uint8_t STATUS_TEXT_SIZE = 2;
-constexpr int16_t STATUS_CLEAR_HEIGHT = 36;
-constexpr uint8_t BOOT_DETAIL_TEXT_SIZE = 1;
-constexpr uint8_t CODE_TEXT_SIZE = 2;
-
-constexpr int16_t TITLE_Y = 20;
-constexpr int16_t TIMER_Y = 80;
-constexpr int16_t STATUS_Y = 150;
-constexpr int16_t BAR_Y = 185;
-constexpr int16_t BAR_WIDTH = 200;
-constexpr int16_t BAR_HEIGHT = 16;
-constexpr int16_t BAR_BORDER = 2;
-constexpr int16_t CODE_Y = 260;
-
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite timerSprite = TFT_eSprite(&tft);
 TFT_eSprite statusSprite = TFT_eSprite(&tft);
@@ -512,7 +494,7 @@ void render(const UiModel &model) {
   const bool screenChanged = !renderState.hasLastScreen || renderState.lastScreen != currentScreen;
   const uint32_t now = millis();
   if (!screenChanged && !themeChanged && renderState.hasLastScreen &&
-      (now - renderState.lastRenderMs) < FRAME_INTERVAL_MS) {
+      (now - renderState.lastRenderMs) < UI_FRAME_INTERVAL_MS) {
     return;
   }
 

@@ -10,30 +10,6 @@
 #include "game_config.h"
 
 namespace {
-constexpr uint8_t KEYPAD_ADDR = 0x20;   // PCF8574 for 4x4 keypad
-constexpr uint8_t BUTTON_ADDR = 0x21;   // PCF8574 for dual buttons
-constexpr uint8_t I2C_SDA = 18; //blue wire
-constexpr uint8_t I2C_SCL = 23; //white wire
-constexpr uint8_t IR_PIN = 35; //yellow wire
-
-constexpr uint32_t I2C_FREQ = 100000;   // 100kHz per agents.md
-
-constexpr uint32_t KEY_DEBOUNCE_MS = 50;
-constexpr uint32_t BUTTON_DEBOUNCE_MS = 30;
-
-// Key map matches a standard 4x4 matrix; only numeric keys are acted upon.
-//constexpr char KEY_MAP[4][4] = {{'1', '2', '3', 'A'},
-//                                {'4', '5', '6', 'B'},
-//                                {'7', '8', '9', 'C'},
-//                                {'*', '0', '#', 'D'}};
-//
-//Rotated to match wiring
-constexpr char KEY_MAP[4][4] = {{'1', '4', '7', '*'},
-                                {'2', '5', '8', '0'},
-                                {'3', '6', '9', '#'},
-                                {'A', 'B', 'C', 'D'}};
-
-
 bool lastButtonsRaw = false;
 bool debouncedButtons = false;
 uint32_t buttonsChangeMs = 0;
@@ -131,7 +107,7 @@ void consumeKeypadDigit() {
 }
 
 void initInputs() {
-  Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ);
+  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, I2C_FREQ);
 
   // Default all PCF8574 pins high so rows/columns float and buttons read as idle.
   writePcf(KEYPAD_ADDR, 0xFF);

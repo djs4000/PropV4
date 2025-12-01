@@ -69,9 +69,6 @@ static bool webServerRunning = false;
 static bool webServerRoutesConfigured = false;
 static uint32_t lastWebServerServiceMs = 0;
 
-// Timeout for each WiFi connection attempt before retrying.
-static constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 5000;
-
 // Forward declarations for config portal route handlers to ensure registration
 // compiles before definitions later in the file.
 static void handleConfigPortalGet();
@@ -281,14 +278,10 @@ String getConfigPortalPassword() { return String(SOFTAP_PASSWORD); }
 
 String getConfigPortalAddress() {
   if (configPortalActive) {
-    char address[32] = {0};
-    snprintf(address, sizeof(address), "http://%s", WiFi.softAPIP().toString().c_str());
-    return String(address);
+    return String("http://") + WiFi.softAPIP().toString();
   }
   if (isWifiConnected()) {
-    char address[32] = {0};
-    snprintf(address, sizeof(address), "http://%s", WiFi.localIP().toString().c_str());
-    return String(address);
+    return String("http://") + WiFi.localIP().toString();
   }
   // Default SoftAP IP for user guidance when the portal is starting up.
   return String("http://192.168.4.1");
@@ -363,8 +356,6 @@ void updateApi() {
   } else {
     doc["timer"] = DEFAULT_BOMB_DURATION_MS;
   }
-  // Send monotonic uptime so the Server can calculate skew
-  doc["uptime_ms"] = payloadNowMs;
   doc["timestamp"] = timestampEpochMs;
 
   String payload;
