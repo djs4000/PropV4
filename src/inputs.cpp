@@ -41,6 +41,7 @@ uint32_t buttonsChangeMs = 0;
 char lastKeyRaw = '\0';
 char debouncedKey = '\0';
 uint32_t keyChangeMs = 0;
+char lastReportedKey = '\0';
 
 InputSnapshot lastSnapshot{};
 
@@ -168,19 +169,32 @@ InputSnapshot updateInputs() {
 
   if (now - keyChangeMs >= KEY_DEBOUNCE_MS && debouncedKey != rawKey) {
     debouncedKey = rawKey;
+  }
+
+  bool keypadEdgeAvailable = false;
+  char keypadEdgeDigit = '\0';
+
+  if (debouncedKey == '\0') {
+    lastReportedKey = '\0';
+  } else if (debouncedKey >= '0' && debouncedKey <= '9') {
+    if (debouncedKey != lastReportedKey) {
+      keypadEdgeAvailable = true;
+      keypadEdgeDigit = debouncedKey;
+      lastReportedKey = debouncedKey;
 #ifdef APP_DEBUG
-    if (debouncedKey != '\0') {
       Serial.print("KEYPAD: ");
       Serial.println(debouncedKey);
-    }
 #endif
+    }
+  } else if (debouncedKey != lastReportedKey) {
+    lastReportedKey = debouncedKey;
   }
 
   lastSnapshot.nowMs = now;
   lastSnapshot.bothButtonsPressed = debouncedButtons;
   lastSnapshot.irConfirmationReceived = irConfirmationPending;
-  lastSnapshot.keypadDigitAvailable = (debouncedKey >= '0' && debouncedKey <= '9');
-  lastSnapshot.keypadDigit = lastSnapshot.keypadDigitAvailable ? debouncedKey : '\0';
+  lastSnapshot.keypadDigitAvailable = keypadEdgeAvailable;
+  lastSnapshot.keypadDigit = keypadEdgeDigit;
 
   if (lastSnapshot.irConfirmationReceived) {
     irConfirmationPending = false;
