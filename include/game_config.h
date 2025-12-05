@@ -39,11 +39,11 @@ constexpr uint32_t API_POST_INTERVAL_MS = 500;       // 5s for testing
 constexpr uint32_t API_POST_INTERVAL_MS = 500;       // 500ms for live
 #endif
 constexpr uint32_t API_TIMEOUT_MS = 10000;            // 10s before API is considered offline
-constexpr uint32_t BUTTON_HOLD_MS = 10000;             // 3s hold for arming/reset
+constexpr uint32_t BUTTON_HOLD_MS = 3000;             // 3s hold for arming/reset
 constexpr uint32_t IR_CONFIRM_WINDOW_MS = 5000;       // 5s window to receive IR confirmation
 constexpr uint8_t DEFUSE_CODE_LENGTH = 4;             // Number of digits in the defuse code
 constexpr uint8_t MAX_WIFI_RETRIES = 10;              // WiFi connection attempts before failing
-constexpr uint32_t DEFAULT_BOMB_DURATION_MS = 12000;  // Default bomb countdown time (e.g., 40s)
+constexpr uint32_t DEFAULT_BOMB_DURATION_MS = 40000;  // Default bomb countdown time (e.g., 40s)
 
 // Placeholder default defuse code used until Preferences or web UI override it.
 static constexpr const char *DEFAULT_DEFUSE_CODE = "1234";
@@ -54,7 +54,7 @@ static constexpr const char *DEFAULT_DEFUSE_CODE = "1234";
 // Settings for WiFi, SoftAP, and the backend API endpoint.
 
 // Optional default API endpoint. Replace with the real backend URL when known.
-static constexpr const char *DEFAULT_API_ENDPOINT = "http://192.168.1.234:9055/prop";
+static constexpr const char *DEFAULT_API_ENDPOINT = "http://192.168.0.2:9055/prop";
 
 // SoftAP configuration used when station mode fails and the device enters the
 // configuration portal. The SSID is generated at runtime using the prefix and
