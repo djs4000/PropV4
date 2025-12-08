@@ -31,7 +31,7 @@ static UiModel buildUiModel() {
   model.showArmingPrompt = lastGameOutputs.showArmingConfirmPrompt || (state == ARMING && isIrConfirmationWindowActive());
   model.gameOver = lastGameOutputs.gameOver;
 
-  if (state == ARMED) {
+  if (state == ARMED || state == DEFUSED || state == DETONATED) {
     model.bombTimerActive = isBombTimerActive();
     model.timerRemainingMs = getBombTimerRemainingMs();
     model.bombTimerExpired = model.timerRemainingMs == 0;

@@ -336,13 +336,6 @@ void updateApi() {
 
   // Keep outbound state/timer in sync with the current state machine status.
   outboundState = getState();
-  uint32_t timerMs = DEFAULT_BOMB_DURATION_MS;
-  bool includeTimer = false;
-  if (outboundState == ARMED && isBombTimerActive()) {
-    timerMs = getBombTimerRemainingMs();
-    includeTimer = true;
-  }
-  outboundTimerMs = timerMs;
 
   const uint32_t payloadNowMs = millis();
   int64_t timestampEpochMs = 0;
@@ -352,10 +345,10 @@ void updateApi() {
 
   JsonDocument doc;
   doc["state"] = flameStateToString(outboundState);
-  if (includeTimer) {
-    doc["timer"] = outboundTimerMs;
+  if (outboundState == ARMED || outboundState == DEFUSED || outboundState == DETONATED) {
+    doc["timer"] = getBombTimerRemainingMs();
   } else {
-    doc["timer"] = DEFAULT_BOMB_DURATION_MS;
+    doc["timer"] = getConfiguredBombDurationMs();
   }
   doc["timestamp"] = timestampEpochMs;
   doc["uptime_ms"] = payloadNowMs;
