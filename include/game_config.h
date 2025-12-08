@@ -9,8 +9,8 @@
 // =====================================================================================
 // This section defines the GPIO pins used for various hardware components.
 
-constexpr uint8_t I2C_SDA_PIN = 18;           // I2C data line for keypad and buttons (blue wire)
-constexpr uint8_t I2C_SCL_PIN = 23;           // I2C clock line for keypad and buttons (white wire)
+constexpr uint8_t I2C_SDA_PIN = 23 ;           // I2C data line for keypad and buttons (blue wire)
+constexpr uint8_t I2C_SCL_PIN = 27;           // I2C clock line for keypad and buttons (white wire)
 constexpr uint8_t IR_PIN = 35;                // IR receiver input pin (yellow wire)
 constexpr uint8_t LED_PIN = 19;               // WS2812B LED strip data pin (green wire)
 constexpr uint8_t AMP_ENABLE_PIN = 4;         // Audio amplifier enable pin (LOW to enable)
@@ -24,7 +24,7 @@ constexpr uint8_t BACKLIGHT_PIN = 21;         // TFT display backlight control p
 
 constexpr uint8_t KEYPAD_ADDR = 0x20;         // PCF8574 address for 4x4 keypad
 constexpr uint8_t BUTTON_ADDR = 0x21;         // PCF8574 address for dual buttons
-constexpr uint32_t I2C_FREQ = 100000;         // I2C bus frequency (100kHz)
+constexpr uint32_t I2C_FREQ = 50000;         // I2C bus frequency (100kHz)
 
 // =====================================================================================
 // Gameplay & Core Logic Configuration
