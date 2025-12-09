@@ -135,15 +135,17 @@ void renderCountdown(uint32_t now) {
     lastCountdownPulseMs = 0;
   } else {
     // Final 3 seconds: low-brightness base with a short bright pulse + beep
-    const uint16_t pulseDurationMs = 150;
-    const int currentSecond = static_cast<int>(remainingMs / 1000);
+    const uint16_t basePulseDurationMs = 150;
+    const int currentSecond = static_cast<int>((remainingMs + 999) / 1000);
+    const uint16_t pulseDurationMs = currentSecond == 0 ? basePulseDurationMs * 2 : basePulseDurationMs;
     const bool shouldPulse = (lastCountdownPulseMs > 0) &&
                              (now - lastCountdownPulseMs < pulseDurationMs);
 
     fillAll(COLOR_BOOT, shouldPulse ? 1.0f : 0.1f);
 
     if (currentSecond != lastCountdownBeepSecond) {
-      effects::playBeep(1800, 150, 255);
+      const uint16_t beepDurationMs = currentSecond == 0 ? 300 : 150;
+      effects::playBeep(1800, beepDurationMs, 255);
       lastCountdownBeepSecond = currentSecond;
       lastCountdownPulseMs = now;
     }
