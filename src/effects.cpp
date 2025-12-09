@@ -22,6 +22,7 @@ bool detonatedActive = false;
 
 uint32_t lastArmedBeepMs = 0;
 int lastCountdownBeepSecond = -1;
+uint32_t lastCountdownPulseMs = 0;
 
 struct ToneState {
   bool active = false;
@@ -130,16 +131,21 @@ void renderCountdown(uint32_t now) {
   const uint32_t remainingMs = getGameTimerRemainingMs();
   if (remainingMs > 3000) {
     fillAll(COLOR_BOOT, 0.1f);
-    lastCountdownBeepSecond = -1; // Reset beep tracking
+    lastCountdownBeepSecond = -1;  // Reset beep tracking
+    lastCountdownPulseMs = 0;
   } else {
-    // Final 3 seconds: flash bright white and beep
-    const bool on = (now / 100) % 2 == 0;
-    fillAll(COLOR_BOOT, on ? 1.0f : 0.0f);
-
+    // Final 3 seconds: low-brightness base with a short bright pulse + beep
+    const uint16_t pulseDurationMs = 150;
     const int currentSecond = static_cast<int>(remainingMs / 1000);
+    const bool shouldPulse = (lastCountdownPulseMs > 0) &&
+                             (now - lastCountdownPulseMs < pulseDurationMs);
+
+    fillAll(COLOR_BOOT, shouldPulse ? 1.0f : 0.1f);
+
     if (currentSecond != lastCountdownBeepSecond) {
       effects::playBeep(1800, 150, 255);
       lastCountdownBeepSecond = currentSecond;
+      lastCountdownPulseMs = now;
     }
   }
 }
