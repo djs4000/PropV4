@@ -42,7 +42,7 @@ constexpr uint32_t API_TIMEOUT_MS = 10000;            // 10s before API is consi
 constexpr uint32_t BUTTON_HOLD_MS = 3000;             // 3s hold for arming/reset
 constexpr uint32_t IR_CONFIRM_WINDOW_MS = 5000;       // 5s window to receive IR confirmation
 constexpr uint8_t DEFUSE_CODE_LENGTH = 4;             // Number of digits in the defuse code
-constexpr uint8_t MAX_WIFI_RETRIES = 10;              // WiFi connection attempts before failing
+constexpr uint8_t MAX_WIFI_RETRIES = 3;              // WiFi connection attempts before failing
 constexpr uint32_t DEFAULT_BOMB_DURATION_MS = 40000;  // Default bomb countdown time (e.g., 40s)
 
 // Placeholder default defuse code used until Preferences or web UI override it.
