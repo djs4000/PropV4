@@ -132,7 +132,7 @@ void playBootFlash(uint32_t now) {
 
 void renderCountdown(uint32_t now) {
   const uint32_t remainingMs = getGameTimerRemainingMs();
-  if (remainingMs > 3000) {
+  if (remainingMs > 4000) {
     fillAll(COLOR_BOOT, 0.1f);
     lastCountdownBeepSecond = -1;  // Reset beep tracking
     lastCountdownPulseMs = 0;
