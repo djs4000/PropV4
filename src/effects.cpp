@@ -365,7 +365,9 @@ void update(uint32_t now) {
   }
   lastFrameMs = now;
 
-  if (getMatchStatus() == Countdown) {
+  const bool countdownActive = getMatchStatus() == Countdown;
+  const bool countdownCuesActive = countdownActive || countdownCuesRemaining > 0;
+  if (countdownCuesActive) {
     renderCountdown(now);
     strip.show();
     return;
