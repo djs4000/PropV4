@@ -23,6 +23,9 @@ bool detonatedActive = false;
 uint32_t lastArmedBeepMs = 0;
 int lastCountdownBeepSecond = -1;
 uint32_t lastCountdownPulseMs = 0;
+uint32_t nextCountdownCueMs = 0;
+uint16_t activeCountdownPulseDurationMs = 0;
+int countdownCuesRemaining = 0;
 
 struct ToneState {
   bool active = false;
@@ -133,22 +136,35 @@ void renderCountdown(uint32_t now) {
     fillAll(COLOR_BOOT, 0.1f);
     lastCountdownBeepSecond = -1;  // Reset beep tracking
     lastCountdownPulseMs = 0;
+    nextCountdownCueMs = 0;
+    countdownCuesRemaining = 0;
+    activeCountdownPulseDurationMs = 0;
   } else {
     // Final 3 seconds: low-brightness base with a short bright pulse + beep
     const uint16_t basePulseDurationMs = 150;
     const int currentSecond = static_cast<int>((remainingMs + 999) / 1000);
-    const uint16_t pulseDurationMs = currentSecond == 0 ? basePulseDurationMs * 2 : basePulseDurationMs;
-    const bool shouldPulse = (lastCountdownPulseMs > 0) &&
-                             (now - lastCountdownPulseMs < pulseDurationMs);
 
-    fillAll(COLOR_BOOT, shouldPulse ? 1.0f : 0.1f);
-
-    if (currentSecond != lastCountdownBeepSecond) {
-      const uint16_t beepDurationMs = currentSecond == 0 ? 300 : 150;
-      effects::playBeep(1800, beepDurationMs, 255);
-      lastCountdownBeepSecond = currentSecond;
-      lastCountdownPulseMs = now;
+    // Re-sync the cue schedule if we just entered the window or the timer jumped.
+    const int targetCuesRemaining = constrain(currentSecond + 1, 1, 4);
+    if (countdownCuesRemaining == 0 || countdownCuesRemaining > targetCuesRemaining) {
+      countdownCuesRemaining = targetCuesRemaining;
+      nextCountdownCueMs = now;
     }
+
+    if (countdownCuesRemaining > 0 && now >= nextCountdownCueMs) {
+      const int cueSecond = countdownCuesRemaining - 1;
+      const uint16_t beepDurationMs = cueSecond == 0 ? 300 : 150;
+      activeCountdownPulseDurationMs = cueSecond == 0 ? basePulseDurationMs * 2 : basePulseDurationMs;
+      effects::playBeep(1800, beepDurationMs, 255);
+      lastCountdownBeepSecond = cueSecond;
+      lastCountdownPulseMs = now;
+      --countdownCuesRemaining;
+      nextCountdownCueMs = now + 1000;
+    }
+
+    const bool shouldPulse = (lastCountdownPulseMs > 0) &&
+                             (now - lastCountdownPulseMs < activeCountdownPulseDurationMs);
+    fillAll(COLOR_BOOT, shouldPulse ? 1.0f : 0.1f);
   }
 }
 
