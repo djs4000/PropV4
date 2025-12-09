@@ -1,0 +1,7 @@
+- [ ] **Implement Countdown Effect Logic:** Modify `effects::update()` in `src/effects.cpp` to add a special case for `MatchStatus::Countdown`.
+- [ ] **Low-Brightness State:** When the countdown is longer than 3 seconds, set LEDs to a dim white using `fillAll` and a brightness scalar.
+- [ ] **Flashing and Beeping State:** In the last 3 seconds of the countdown:
+  - [ ] Implement a flashing white light effect by modulating brightness.
+  - [ ] Trigger `effects::playBeep()` once per second.
+- [ ] **State Management:** Use a static variable to track the "last beeped second" to prevent multiple beeps within the same second.
+- [ ] **Validation:** Manually test by forcing the device into a countdown state and verifying the LED and buzzer behavior match the requirements.

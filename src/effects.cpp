@@ -3,6 +3,7 @@
 #include <Adafruit_NeoPixel.h>
 #include <cmath>
 
+#include "core/game_state.h"
 #include "game_config.h"
 #include "state_machine.h"
 
@@ -20,6 +21,7 @@ uint32_t detonatedStartMs = 0;
 bool detonatedActive = false;
 
 uint32_t lastArmedBeepMs = 0;
+int lastCountdownBeepSecond = -1;
 
 struct ToneState {
   bool active = false;
@@ -121,6 +123,24 @@ void playBootFlash(uint32_t now) {
     fillAll(COLOR_BOOT, constrain(t, 0.0f, 1.0f));
   } else {
     bootFlashActive = false;
+  }
+}
+
+void renderCountdown(uint32_t now) {
+  const uint32_t remainingMs = getGameTimerRemainingMs();
+  if (remainingMs > 3000) {
+    fillAll(COLOR_BOOT, 0.1f);
+    lastCountdownBeepSecond = -1; // Reset beep tracking
+  } else {
+    // Final 3 seconds: flash bright white and beep
+    const bool on = (now / 100) % 2 == 0;
+    fillAll(COLOR_BOOT, on ? 1.0f : 0.0f);
+
+    const int currentSecond = static_cast<int>(remainingMs / 1000);
+    if (currentSecond != lastCountdownBeepSecond) {
+      effects::playBeep(1800, 150, 255);
+      lastCountdownBeepSecond = currentSecond;
+    }
   }
 }
 
@@ -320,6 +340,12 @@ void update(uint32_t now) {
     return;
   }
   lastFrameMs = now;
+
+  if (getMatchStatus() == Countdown) {
+    renderCountdown(now);
+    strip.show();
+    return;
+  }
 
   const FlameState state = getState();
   switch (state) {
