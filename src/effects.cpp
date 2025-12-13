@@ -22,6 +22,12 @@ bool detonatedActive = false;
 
 uint32_t lastArmedBeepMs = 0;
 int lastCountdownBeepSecond = -1;
+uint32_t lastCountdownPulseMs = 0;
+uint32_t nextCountdownCueMs = 0;
+uint16_t activeCountdownPulseDurationMs = 0;
+int countdownCuesRemaining = 0;
+uint32_t countdownEndEstimateMs = 0;
+bool countdownScheduleInitialized = false;
 
 struct ToneState {
   bool active = false;
@@ -128,19 +134,65 @@ void playBootFlash(uint32_t now) {
 
 void renderCountdown(uint32_t now) {
   const uint32_t remainingMs = getGameTimerRemainingMs();
-  if (remainingMs > 3000) {
-    fillAll(COLOR_BOOT, 0.1f);
-    lastCountdownBeepSecond = -1; // Reset beep tracking
-  } else {
-    // Final 3 seconds: flash bright white and beep
-    const bool on = (now / 100) % 2 == 0;
-    fillAll(COLOR_BOOT, on ? 1.0f : 0.0f);
+  const bool countdownCuesEnabled = COUNTDOWN_CUES_ENABLED && COUNTDOWN_CUE_SECONDS > 0;
+  const uint32_t cueWindowMs = (static_cast<uint32_t>(COUNTDOWN_CUE_SECONDS) + 1) * 1000UL;
 
-    const int currentSecond = static_cast<int>(remainingMs / 1000);
-    if (currentSecond != lastCountdownBeepSecond) {
-      effects::playBeep(1800, 150, 255);
-      lastCountdownBeepSecond = currentSecond;
+  if (!countdownCuesEnabled || remainingMs > cueWindowMs) {
+    fillAll(COUNTDOWN_COLOR, 0.1f);
+    lastCountdownBeepSecond = -1;  // Reset beep tracking
+    lastCountdownPulseMs = 0;
+    nextCountdownCueMs = 0;
+    countdownCuesRemaining = 0;
+    activeCountdownPulseDurationMs = 0;
+    countdownEndEstimateMs = remainingMs == 0 ? 0 : now + remainingMs;
+    countdownScheduleInitialized = false;
+  } else {
+    // Final configured seconds: low-brightness base with a short bright pulse + beep
+    const uint16_t basePulseDurationMs = 150;
+    const int maxCues = static_cast<int>(COUNTDOWN_CUE_SECONDS) + 1;
+
+    // Use the pre-window runway to estimate the countdown end and align cues to whole seconds.
+    if (countdownEndEstimateMs == 0) {
+      countdownEndEstimateMs = now + remainingMs;
     }
+
+    if (!countdownScheduleInitialized) {
+      countdownCuesRemaining = maxCues;
+      const uint32_t cueSecond = static_cast<uint32_t>(countdownCuesRemaining - 1);
+      const int64_t targetCueMs = static_cast<int64_t>(countdownEndEstimateMs) -
+                                  static_cast<int64_t>(cueSecond) * 1000LL;
+      nextCountdownCueMs = targetCueMs < 0 ? now : static_cast<uint32_t>(targetCueMs);
+      countdownScheduleInitialized = true;
+    }
+
+    if (lastCountdownBeepSecond < 0 &&
+        remainingMs > static_cast<uint32_t>(COUNTDOWN_CUE_SECONDS) * 1000UL) {
+      const uint32_t cueSecond = static_cast<uint32_t>(countdownCuesRemaining - 1);
+      const int64_t targetCueMs = static_cast<int64_t>(now + remainingMs) -
+                                  static_cast<int64_t>(cueSecond) * 1000LL;
+      nextCountdownCueMs = targetCueMs < 0 ? now : static_cast<uint32_t>(targetCueMs);
+      countdownEndEstimateMs = now + remainingMs;
+    }
+
+    while (countdownCuesRemaining > 0 && static_cast<int32_t>(now - nextCountdownCueMs) >= 0) {
+      const int cueSecond = countdownCuesRemaining - 1;
+      const uint16_t beepDurationMs = cueSecond == 0 ? 300 : 150;
+      activeCountdownPulseDurationMs = cueSecond == 0 ? basePulseDurationMs * 2 : basePulseDurationMs;
+      effects::playBeep(1800, beepDurationMs, 255);
+      lastCountdownBeepSecond = cueSecond;
+      lastCountdownPulseMs = now;
+      --countdownCuesRemaining;
+      if (countdownCuesRemaining > 0) {
+        const uint32_t nextCueSecond = static_cast<uint32_t>(countdownCuesRemaining - 1);
+        const int64_t targetCueMs = static_cast<int64_t>(countdownEndEstimateMs) -
+                                    static_cast<int64_t>(nextCueSecond) * 1000LL;
+        nextCountdownCueMs = targetCueMs < 0 ? now : static_cast<uint32_t>(targetCueMs);
+      }
+    }
+
+    const bool shouldPulse = (lastCountdownPulseMs > 0) &&
+                             (now - lastCountdownPulseMs < activeCountdownPulseDurationMs);
+    fillAll(COUNTDOWN_COLOR, shouldPulse ? 1.0f : 0.1f);
   }
 }
 
@@ -341,7 +393,9 @@ void update(uint32_t now) {
   }
   lastFrameMs = now;
 
-  if (getMatchStatus() == Countdown) {
+  const bool countdownActive = getMatchStatus() == Countdown;
+  const bool countdownCuesActive = countdownActive || countdownCuesRemaining > 0;
+  if (countdownCuesActive) {
     renderCountdown(now);
     strip.show();
     return;

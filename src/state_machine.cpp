@@ -75,8 +75,9 @@ void setMatchStatus(MatchStatus status) { game_state::set_match_status(status); 
 
 MatchStatus getMatchStatus() { return game_state::get_match_status(); }
 
-void updateGameTimerFromApi(uint32_t remainingMs, uint32_t nowMs) {
-  game_state::update_game_timer_from_api(remainingMs, nowMs);
+void updateGameTimerFromApi(uint32_t remainingMs, uint32_t nowMs, uint32_t rttMs,
+                            MatchStatus status) {
+  game_state::update_game_timer_from_api(remainingMs, nowMs, rttMs, status);
 }
 
 bool isGameTimerValid() { return game_state::is_game_timer_valid(); }

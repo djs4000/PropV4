@@ -68,7 +68,8 @@ void set_state(FlameState newState, GameOutputs *outputs = nullptr);
 void set_match_status(MatchStatus status);
 MatchStatus get_match_status();
 
-void update_game_timer_from_api(uint32_t remainingMs, uint32_t nowMs);
+void update_game_timer_from_api(uint32_t remainingMs, uint32_t nowMs, uint32_t rttMs,
+                                MatchStatus status);
 bool is_game_timer_valid();
 uint32_t get_game_timer_remaining_ms();
 

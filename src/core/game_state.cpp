@@ -12,6 +12,8 @@ MatchStatus currentMatchStatus = WaitingOnStart;
 bool gameTimerValid = false;
 uint32_t gameTimerRemainingMs = 0;
 uint32_t gameTimerLastUpdateMs = 0;
+bool countdownAnchorActive = false;
+uint32_t countdownEndMs = 0;
 
 bool bombTimerActive = false;
 uint32_t bombTimerDurationMs = 0;
@@ -398,9 +400,34 @@ void set_match_status(MatchStatus status) { currentMatchStatus = status; }
 
 MatchStatus get_match_status() { return currentMatchStatus; }
 
-void update_game_timer_from_api(uint32_t remainingMs, uint32_t nowMs) {
+void update_game_timer_from_api(uint32_t remainingMs, uint32_t nowMs, uint32_t rttMs,
+                                MatchStatus status) {
+  const uint32_t oneWayMs = rttMs / 2;
+  const uint32_t adjustedRemaining = remainingMs > oneWayMs ? remainingMs - oneWayMs : 0;
+  const bool countdownStatus = status == Countdown;
+
+  if (!countdownStatus) {
+    countdownAnchorActive = false;
+    countdownEndMs = 0;
+  }
+
+  if (countdownStatus) {
+    const uint32_t cueWindowMs = static_cast<uint32_t>(COUNTDOWN_CUE_SECONDS) * 1000UL;
+    if (!countdownAnchorActive) {
+      countdownAnchorActive = true;
+      countdownEndMs = nowMs + adjustedRemaining;
+    } else if (adjustedRemaining > cueWindowMs || countdownEndMs == 0) {
+      // Allow re-syncs while still before the cue window to absorb network spikes.
+      countdownEndMs = nowMs + adjustedRemaining;
+    }
+
+    const uint32_t remainingFromAnchor = countdownEndMs <= nowMs ? 0 : countdownEndMs - nowMs;
+    gameTimerRemainingMs = remainingFromAnchor;
+  } else {
+    gameTimerRemainingMs = adjustedRemaining;
+  }
+
   gameTimerValid = true;
-  gameTimerRemainingMs = remainingMs;
   gameTimerLastUpdateMs = nowMs;
 }
 

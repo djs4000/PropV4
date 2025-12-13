@@ -431,12 +431,15 @@ void updateApi() {
         }
       }
 
+      const uint32_t rttMs = responseNow - lastApiRequestStartMs;
+
       baseRemainingTimeMs = remainingMs;
       baseRemainingTimestampMs = responseNow;
       lastApiResponseMs = responseNow;
       apiResponseReceived = true;
 
-      updateGameTimerFromApi(remainingMs, responseNow);
+      const MatchStatus timerStatus = statusParsed ? parsedStatus : remoteStatus;
+      updateGameTimerFromApi(remainingMs, responseNow, rttMs, timerStatus);
 
       if (statusParsed) {
         remoteStatus = parsedStatus;
@@ -444,8 +447,6 @@ void updateApi() {
 
       // Treat a well-formed JSON body as a successful API interaction for timeout tracking.
       lastSuccessfulApiMs = responseNow;
-
-      const uint32_t rttMs = responseNow - lastApiRequestStartMs;
 
       if (lastSuccessfulApiDebugMs != 0) {
         const uint32_t delta = responseNow - lastSuccessfulApiDebugMs;
