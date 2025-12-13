@@ -128,6 +128,9 @@ constexpr int16_t CODE_Y = 260;
 constexpr uint32_t EFFECTS_FRAME_INTERVAL_MS = 50;         // Base cadence for LED effect updates
 
 // Countdown beeps
+#define COUNTDOWN_CUES_ENABLED 1
+constexpr uint8_t COUNTDOWN_CUE_SECONDS = 3;            // Number of seconds to flash/beep before zero
+constexpr RgbColor COUNTDOWN_COLOR = {255, 255, 255};   // Countdown LED color
 constexpr uint32_t COUNTDOWN_BEEP_INTERVAL_MS = 1000;        // 1s beeps (slow cadence)
 constexpr uint32_t COUNTDOWN_BEEP_START_THRESHOLD_MS = 11000; // begin slow beeps when remaining is under this
 constexpr uint32_t COUNTDOWN_BEEP_FAST_INTERVAL_MS = 500;    // faster cadence near zero

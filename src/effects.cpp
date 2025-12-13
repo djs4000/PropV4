@@ -132,20 +132,24 @@ void playBootFlash(uint32_t now) {
 
 void renderCountdown(uint32_t now) {
   const uint32_t remainingMs = getGameTimerRemainingMs();
-  if (remainingMs > 4000) {
-    fillAll(COLOR_BOOT, 0.1f);
+  const bool countdownCuesEnabled = COUNTDOWN_CUES_ENABLED && COUNTDOWN_CUE_SECONDS > 0;
+  const uint32_t cueWindowMs = (static_cast<uint32_t>(COUNTDOWN_CUE_SECONDS) + 1) * 1000UL;
+
+  if (!countdownCuesEnabled || remainingMs > cueWindowMs) {
+    fillAll(COUNTDOWN_COLOR, 0.1f);
     lastCountdownBeepSecond = -1;  // Reset beep tracking
     lastCountdownPulseMs = 0;
     nextCountdownCueMs = 0;
     countdownCuesRemaining = 0;
     activeCountdownPulseDurationMs = 0;
   } else {
-    // Final 3 seconds: low-brightness base with a short bright pulse + beep
+    // Final configured seconds: low-brightness base with a short bright pulse + beep
     const uint16_t basePulseDurationMs = 150;
     const int currentSecond = static_cast<int>((remainingMs + 999) / 1000);
+    const int maxCues = static_cast<int>(COUNTDOWN_CUE_SECONDS) + 1;
 
     // Re-sync the cue schedule if we just entered the window or the timer jumped.
-    const int targetCuesRemaining = constrain(currentSecond + 1, 1, 4);
+    const int targetCuesRemaining = constrain(currentSecond + 1, 1, maxCues);
     if (countdownCuesRemaining == 0 || countdownCuesRemaining > targetCuesRemaining) {
       countdownCuesRemaining = targetCuesRemaining;
       nextCountdownCueMs = now;
@@ -164,7 +168,7 @@ void renderCountdown(uint32_t now) {
 
     const bool shouldPulse = (lastCountdownPulseMs > 0) &&
                              (now - lastCountdownPulseMs < activeCountdownPulseDurationMs);
-    fillAll(COLOR_BOOT, shouldPulse ? 1.0f : 0.1f);
+    fillAll(COUNTDOWN_COLOR, shouldPulse ? 1.0f : 0.1f);
   }
 }
 
