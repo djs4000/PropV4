@@ -26,6 +26,7 @@ uint32_t lastCountdownPulseMs = 0;
 uint32_t nextCountdownCueMs = 0;
 uint16_t activeCountdownPulseDurationMs = 0;
 int countdownCuesRemaining = 0;
+uint32_t countdownEndEstimateMs = 0;
 
 struct ToneState {
   bool active = false;
@@ -142,20 +143,26 @@ void renderCountdown(uint32_t now) {
     nextCountdownCueMs = 0;
     countdownCuesRemaining = 0;
     activeCountdownPulseDurationMs = 0;
+    countdownEndEstimateMs = remainingMs == 0 ? 0 : now + remainingMs;
   } else {
     // Final configured seconds: low-brightness base with a short bright pulse + beep
     const uint16_t basePulseDurationMs = 150;
-    const int currentSecond = static_cast<int>((remainingMs + 999) / 1000);
     const int maxCues = static_cast<int>(COUNTDOWN_CUE_SECONDS) + 1;
 
-    // Re-sync the cue schedule if we just entered the window or the timer jumped.
-    const int targetCuesRemaining = constrain(currentSecond + 1, 1, maxCues);
-    if (countdownCuesRemaining == 0 || countdownCuesRemaining > targetCuesRemaining) {
-      countdownCuesRemaining = targetCuesRemaining;
-      nextCountdownCueMs = now;
+    // Use the pre-window runway to estimate the countdown end and align cues to whole seconds.
+    if (countdownEndEstimateMs == 0) {
+      countdownEndEstimateMs = now + remainingMs;
     }
 
-    if (countdownCuesRemaining > 0 && now >= nextCountdownCueMs) {
+    if (countdownCuesRemaining == 0) {
+      countdownCuesRemaining = maxCues;
+      const uint32_t cueSecond = static_cast<uint32_t>(countdownCuesRemaining - 1);
+      const int64_t targetCueMs = static_cast<int64_t>(countdownEndEstimateMs) -
+                                  static_cast<int64_t>(cueSecond) * 1000LL;
+      nextCountdownCueMs = targetCueMs < 0 ? now : static_cast<uint32_t>(targetCueMs);
+    }
+
+    while (countdownCuesRemaining > 0 && static_cast<int32_t>(now - nextCountdownCueMs) >= 0) {
       const int cueSecond = countdownCuesRemaining - 1;
       const uint16_t beepDurationMs = cueSecond == 0 ? 300 : 150;
       activeCountdownPulseDurationMs = cueSecond == 0 ? basePulseDurationMs * 2 : basePulseDurationMs;
@@ -163,7 +170,12 @@ void renderCountdown(uint32_t now) {
       lastCountdownBeepSecond = cueSecond;
       lastCountdownPulseMs = now;
       --countdownCuesRemaining;
-      nextCountdownCueMs = now + 1000;
+      if (countdownCuesRemaining > 0) {
+        const uint32_t nextCueSecond = static_cast<uint32_t>(countdownCuesRemaining - 1);
+        const int64_t targetCueMs = static_cast<int64_t>(countdownEndEstimateMs) -
+                                    static_cast<int64_t>(nextCueSecond) * 1000LL;
+        nextCountdownCueMs = targetCueMs < 0 ? now : static_cast<uint32_t>(targetCueMs);
+      }
     }
 
     const bool shouldPulse = (lastCountdownPulseMs > 0) &&
