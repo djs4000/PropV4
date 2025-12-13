@@ -27,6 +27,7 @@ uint32_t nextCountdownCueMs = 0;
 uint16_t activeCountdownPulseDurationMs = 0;
 int countdownCuesRemaining = 0;
 uint32_t countdownEndEstimateMs = 0;
+bool countdownScheduleInitialized = false;
 
 struct ToneState {
   bool active = false;
@@ -144,6 +145,7 @@ void renderCountdown(uint32_t now) {
     countdownCuesRemaining = 0;
     activeCountdownPulseDurationMs = 0;
     countdownEndEstimateMs = remainingMs == 0 ? 0 : now + remainingMs;
+    countdownScheduleInitialized = false;
   } else {
     // Final configured seconds: low-brightness base with a short bright pulse + beep
     const uint16_t basePulseDurationMs = 150;
@@ -154,12 +156,22 @@ void renderCountdown(uint32_t now) {
       countdownEndEstimateMs = now + remainingMs;
     }
 
-    if (countdownCuesRemaining == 0) {
+    if (!countdownScheduleInitialized) {
       countdownCuesRemaining = maxCues;
       const uint32_t cueSecond = static_cast<uint32_t>(countdownCuesRemaining - 1);
       const int64_t targetCueMs = static_cast<int64_t>(countdownEndEstimateMs) -
                                   static_cast<int64_t>(cueSecond) * 1000LL;
       nextCountdownCueMs = targetCueMs < 0 ? now : static_cast<uint32_t>(targetCueMs);
+      countdownScheduleInitialized = true;
+    }
+
+    if (lastCountdownBeepSecond < 0 &&
+        remainingMs > static_cast<uint32_t>(COUNTDOWN_CUE_SECONDS) * 1000UL) {
+      const uint32_t cueSecond = static_cast<uint32_t>(countdownCuesRemaining - 1);
+      const int64_t targetCueMs = static_cast<int64_t>(now + remainingMs) -
+                                  static_cast<int64_t>(cueSecond) * 1000LL;
+      nextCountdownCueMs = targetCueMs < 0 ? now : static_cast<uint32_t>(targetCueMs);
+      countdownEndEstimateMs = now + remainingMs;
     }
 
     while (countdownCuesRemaining > 0 && static_cast<int32_t>(now - nextCountdownCueMs) >= 0) {

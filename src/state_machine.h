@@ -15,7 +15,8 @@ void setMatchStatus(MatchStatus status);
 MatchStatus getMatchStatus();
 
 // Game timer synchronization (authoritative data from API with local backup countdown).
-void updateGameTimerFromApi(uint32_t remainingMs, uint32_t nowMs);
+void updateGameTimerFromApi(uint32_t remainingMs, uint32_t nowMs, uint32_t rttMs = 0,
+                            MatchStatus status = WaitingOnStart);
 bool isGameTimerValid();
 uint32_t getGameTimerRemainingMs();
 
